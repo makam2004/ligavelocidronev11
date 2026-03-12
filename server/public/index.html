@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Liga Velocidrone</title>
+  <link rel="stylesheet" href="/css/style-ui.css" />
+  <link rel="stylesheet" href="/css/style-home.css" />
+</head>
+<body class="home">
+  <main class="wrap">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Liga Velocidrone</p>
+        <h1 id="trackTitle" class="page-title">Cargando track activo…</h1>
+        <p id="trackSubtitle" class="subtitle">Espera un momento mientras la web consulta los tracks activos.</p>
+      </div>
+      <a class="btn btn-secondary" href="/admin">Panel admin</a>
+    </header>
+
+    <section class="main-card section-gap">
+      <div class="section-head">
+        <h2>Tracks activos</h2>
+        <button id="reloadTracks" class="btn btn-secondary" type="button">Recargar</button>
+      </div>
+      <div id="tracks"></div>
+    </section>
+
+    <section class="main-card section-gap">
+      <div class="section-head">
+        <h2>Leaderboard</h2>
+        <div id="status" class="status muted">Cargando…</div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Piloto</th>
+              <th>País</th>
+              <th>Modelo</th>
+              <th>Tiempo</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

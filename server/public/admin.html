@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Panel admin · Liga Velocidrone</title>
+  <link rel="stylesheet" href="/css/style-ui.css" />
+</head>
+<body>
+  <main class="wrap admin-wrap">
+    <header class="admin-header">
+      <div>
+        <p class="eyebrow">Panel de administración</p>
+        <h1>Configurar tracks y Telegram</h1>
+        <p class="subtitle">Todo lo que cambies aquí se envía al backend protegido con tu <strong>ADMIN_KEY</strong>.</p>
+      </div>
+      <a class="btn btn-secondary" href="/">Volver a la web</a>
+    </header>
+
+    <section class="main-card section-gap">
+      <h2>1) Clave admin</h2>
+      <label class="field">
+        <span>ADMIN_KEY</span>
+        <input id="adminKey" type="password" placeholder="Pega aquí tu ADMIN_KEY" />
+      </label>
+      <p class="help">La clave no se guarda en base de datos. Solo se envía en cada acción admin.</p>
+    </section>
+
+    <section class="main-card section-gap">
+      <div class="section-head">
+        <h2>2) Guardar un track</h2>
+        <button id="saveTrack" class="btn" type="button">Guardar track</button>
+      </div>
+
+      <div class="grid-2">
+        <label class="field">
+          <span>Nombre visible</span>
+          <input id="trackName" type="text" placeholder="Ej. Tuesday League Track" />
+        </label>
+        <label class="field">
+          <span>Vueltas</span>
+          <select id="laps">
+            <option value="1">1 lap</option>
+            <option value="3">3 laps</option>
+          </select>
+        </label>
+      </div>
+
+      <label class="checkbox-row">
+        <input id="isOfficial" type="checkbox" checked />
+        <span>Track oficial</span>
+      </label>
+
+      <div id="officialFields" class="grid-2">
+        <label class="field">
+          <span>track_id</span>
+          <input id="trackId" type="number" min="1" placeholder="Ej. 1234" />
+        </label>
+        <label class="field inline-field">
+          <span>Activo</span>
+          <input id="trackActive" type="checkbox" checked />
+        </label>
+      </div>
+
+      <div id="unofficialFields" class="grid-2 hidden">
+        <label class="field">
+          <span>online_id</span>
+          <input id="onlineId" type="text" placeholder="Ej. my-track-online-id" />
+        </label>
+      </div>
+
+      <pre id="saveResult" class="result-box muted">Sin acciones todavía.</pre>
+    </section>
+
+    <section class="main-card section-gap">
+      <div class="section-head">
+        <h2>3) Telegram</h2>
+        <button id="registerWebhook" class="btn btn-secondary" type="button">Registrar webhook</button>
+      </div>
+      <p class="help">Esto llamará a Telegram para enlazar el bot con <code>/api/telegram/webhook/&lt;secret&gt;</code>.</p>
+      <pre id="telegramResult" class="result-box muted">Sin acciones todavía.</pre>
+    </section>
+
+    <section class="main-card section-gap">
+      <div class="section-head">
+        <h2>4) Estado del sistema</h2>
+        <button id="reloadStatus" class="btn btn-secondary" type="button">Recargar estado</button>
+      </div>
+      <pre id="healthBox" class="result-box muted">Cargando estado…</pre>
+    </section>
+
+    <section class="main-card section-gap">
+      <div class="section-head">
+        <h2>5) Tracks guardados</h2>
+        <button id="reloadTracksList" class="btn btn-secondary" type="button">Recargar tracks</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Tipo</th>
+              <th>Referencia</th>
+              <th>Vueltas</th>
+              <th>Activo</th>
+            </tr>
+          </thead>
+          <tbody id="tracksListBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="/js/admin.js"></script>
+</body>
+</html>
