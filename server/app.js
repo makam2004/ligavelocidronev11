@@ -5,6 +5,7 @@ import { config, getConfigSummary } from './config.js';
 import { requireAdmin, isAdminRequest } from './middleware/adminAuth.js';
 import { listActivePilots, listTracks, bulkUpsertTracks } from './services/database.js';
 import { getLeagueLeaderboard, validateTrackInput } from './services/league.js';
+import { getAnnualRankingFromDatabase, getWeeklyRankingPreview, storeCurrentWeekScores } from './services/rankings.js';
 import { getTelegramStatus, handleTelegramUpdate, registerTelegramWebhook } from './services/telegram.js';
 import { asyncHandler } from './utils/http.js';
 
@@ -57,6 +58,24 @@ export function createApp() {
     const sanitizedEntries = entries.map((entry) => validateTrackInput(entry));
     const results = await bulkUpsertTracks(sanitizedEntries);
     res.json({ ok: true, tracks: results });
+  }));
+
+  app.get('/api/rankings/weekly', asyncHandler(async (req, res) => {
+    const weekly = await getWeeklyRankingPreview();
+    res.json(weekly);
+  }));
+
+  app.get('/api/rankings/annual', asyncHandler(async (req, res) => {
+    const annual = await getAnnualRankingFromDatabase({ seasonYear: req.query.season_year });
+    res.json(annual);
+  }));
+
+  app.post('/api/admin/rankings/award-weekly', requireAdmin, asyncHandler(async (req, res) => {
+    const result = await storeCurrentWeekScores({
+      seasonYear: req.body?.season_year,
+      weekKey: req.body?.week_key
+    });
+    res.json({ ok: true, ...result });
   }));
 
   app.get('/api/leaderboard', asyncHandler(async (req, res) => {

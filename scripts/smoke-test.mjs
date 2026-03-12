@@ -56,6 +56,8 @@ try {
   assert.equal(home.status, 200);
   const homeHtml = await home.text();
   assert.match(homeHtml, /Liga Velocidrone/i);
+  assert.match(homeHtml, /Ranking semanal/i);
+  assert.match(homeHtml, /Ranking anual/i);
 
   const adminPage = await fetch(`${baseUrl}/admin`);
   assert.equal(adminPage.status, 200);
@@ -78,6 +80,13 @@ try {
     body: JSON.stringify({ name: 'Test', is_official: true, track_id: 10, laps: 1, active: true })
   });
   assert.equal(authorizedWithoutSupabase.response.status, 503);
+
+  const unauthorizedWeeklyAward = await fetchJson(`${baseUrl}/api/admin/rankings/award-weekly`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ season_year: 2026, week_key: '2026-W11' })
+  });
+  assert.equal(unauthorizedWeeklyAward.response.status, 401);
 
   const telegramStatus = await fetchJson(`${baseUrl}/api/telegram/status`);
   assert.equal(telegramStatus.response.status, 200);

@@ -8,6 +8,19 @@ async function fetchJson(url, options = {}) {
   }
 }
 
+function currentWeekInfo(date = new Date()) {
+  const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNumber = utcDate.getUTCDay() || 7;
+  utcDate.setUTCDate(utcDate.getUTCDate() + 4 - dayNumber);
+  const yearStart = new Date(Date.UTC(utcDate.getUTCFullYear(), 0, 1));
+  const weekNumber = Math.ceil((((utcDate - yearStart) / 86400000) + 1) / 7);
+  const seasonYear = utcDate.getUTCFullYear();
+  return {
+    seasonYear,
+    weekKey: `${seasonYear}-W${String(weekNumber).padStart(2, '0')}`
+  };
+}
+
 const els = {
   adminKey: document.getElementById('adminKey'),
   trackName: document.getElementById('trackName'),
@@ -20,6 +33,10 @@ const els = {
   unofficialFields: document.getElementById('unofficialFields'),
   saveTrack: document.getElementById('saveTrack'),
   saveResult: document.getElementById('saveResult'),
+  seasonYear: document.getElementById('seasonYear'),
+  weekKey: document.getElementById('weekKey'),
+  awardWeekly: document.getElementById('awardWeekly'),
+  weeklyResult: document.getElementById('weeklyResult'),
   registerWebhook: document.getElementById('registerWebhook'),
   telegramResult: document.getElementById('telegramResult'),
   reloadStatus: document.getElementById('reloadStatus'),
@@ -103,6 +120,21 @@ async function saveTrack() {
   }
 }
 
+async function awardWeekly() {
+  const payload = {
+    season_year: Number(els.seasonYear.value),
+    week_key: els.weekKey.value.trim()
+  };
+
+  const response = await fetchJson('/api/admin/rankings/award-weekly', {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(payload)
+  });
+
+  setResultBox(els.weeklyResult, response.data);
+}
+
 async function registerWebhook() {
   const response = await fetchJson('/api/admin/telegram/register-webhook', {
     method: 'POST',
@@ -113,11 +145,15 @@ async function registerWebhook() {
 
 els.isOfficial.addEventListener('change', toggleTrackFields);
 els.saveTrack.addEventListener('click', saveTrack);
+els.awardWeekly.addEventListener('click', awardWeekly);
 els.registerWebhook.addEventListener('click', registerWebhook);
 els.reloadStatus.addEventListener('click', loadHealth);
 els.reloadTracksList.addEventListener('click', loadTracks);
 
 document.addEventListener('DOMContentLoaded', async () => {
+  const weekInfo = currentWeekInfo();
+  els.seasonYear.value = String(weekInfo.seasonYear);
+  els.weekKey.value = weekInfo.weekKey;
   toggleTrackFields();
   await loadHealth();
   await loadTracks();

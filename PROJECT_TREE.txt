@@ -1,4 +1,3 @@
-.
 .dockerignore
 .env.example
 .gitignore
@@ -30,8 +29,10 @@ server/public/js/app.js
 server/services
 server/services/database.js
 server/services/league.js
+server/services/rankings.js
 server/services/telegram.js
 server/utils
+server/utils/date.js
 server/utils/http.js
 server/utils/leaderboard.js
 server/utils/normalize.js

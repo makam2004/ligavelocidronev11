@@ -19,7 +19,9 @@ async function fetchJson(url, options = {}) {
 
 const state = {
   tracks: [],
-  selectedTrack: null
+  selectedTrack: null,
+  currentView: 'leaderboard',
+  annualYear: new Date().getFullYear()
 };
 
 const elements = {
@@ -28,18 +30,73 @@ const elements = {
   trackSubtitle: document.getElementById('trackSubtitle'),
   tableBody: document.getElementById('tableBody'),
   status: document.getElementById('status'),
-  reloadTracks: document.getElementById('reloadTracks')
+  reloadTracks: document.getElementById('reloadTracks'),
+  viewTabs: document.getElementById('viewTabs'),
+  leaderboardSection: document.getElementById('leaderboardSection'),
+  weeklySection: document.getElementById('weeklySection'),
+  annualSection: document.getElementById('annualSection'),
+  weeklyStatus: document.getElementById('weeklyStatus'),
+  weeklyNotice: document.getElementById('weeklyNotice'),
+  weeklySummaryBody: document.getElementById('weeklySummaryBody'),
+  weeklyTrackCards: document.getElementById('weeklyTrackCards'),
+  annualStatus: document.getElementById('annualStatus'),
+  annualBody: document.getElementById('annualBody'),
+  annualYear: document.getElementById('annualYear'),
+  reloadAnnual: document.getElementById('reloadAnnual')
 };
 
 function trackLabel(track) {
   return track.name || (track.is_official ? `Track oficial ${track.track_id}` : `Track no oficial ${track.online_id}`);
 }
 
-function renderTitle(track) {
-  elements.trackTitle.textContent = trackLabel(track);
-  elements.trackSubtitle.textContent = track.is_official
-    ? `Track oficial · track_id ${track.track_id} · ${track.laps} lap${track.laps === 3 ? 's' : ''}`
-    : `Track no oficial · online_id ${track.online_id} · ${track.laps} lap${track.laps === 3 ? 's' : ''}`;
+function renderPageTitle() {
+  if (state.currentView === 'leaderboard' && state.selectedTrack) {
+    elements.trackTitle.textContent = trackLabel(state.selectedTrack);
+    elements.trackSubtitle.textContent = state.selectedTrack.is_official
+      ? `Track oficial · track_id ${state.selectedTrack.track_id} · ${state.selectedTrack.laps} lap${state.selectedTrack.laps === 3 ? 's' : ''}`
+      : `Track no oficial · online_id ${state.selectedTrack.online_id} · ${state.selectedTrack.laps} lap${state.selectedTrack.laps === 3 ? 's' : ''}`;
+    return;
+  }
+
+  if (state.currentView === 'weekly') {
+    elements.trackTitle.textContent = 'Ranking semanal';
+    elements.trackSubtitle.textContent = 'Puntos calculados con los tracks activos de la semana.';
+    return;
+  }
+
+  elements.trackTitle.textContent = 'Ranking anual';
+  elements.trackSubtitle.textContent = 'Total de puntos acumulados y guardados en Supabase.';
+}
+
+function renderViewTabs() {
+  const views = [
+    { key: 'leaderboard', label: 'Leaderboard' },
+    { key: 'weekly', label: 'Ranking semanal' },
+    { key: 'annual', label: 'Ranking anual' }
+  ];
+
+  elements.viewTabs.innerHTML = views.map((view) => `
+    <button class="btn ${state.currentView === view.key ? 'active' : 'btn-secondary'}" type="button" data-view="${view.key}">
+      ${view.label}
+    </button>
+  `).join('');
+
+  elements.viewTabs.querySelectorAll('[data-view]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.currentView = button.dataset.view;
+      renderViewTabs();
+      updateVisibleSections();
+      renderPageTitle();
+      if (state.currentView === 'weekly') loadWeeklyRanking();
+      if (state.currentView === 'annual') loadAnnualRanking();
+    });
+  });
+}
+
+function updateVisibleSections() {
+  elements.leaderboardSection.classList.toggle('hidden', state.currentView !== 'leaderboard');
+  elements.weeklySection.classList.toggle('hidden', state.currentView !== 'weekly');
+  elements.annualSection.classList.toggle('hidden', state.currentView !== 'annual');
 }
 
 function renderTrackTabs() {
@@ -62,8 +119,11 @@ function renderTrackTabs() {
     button.addEventListener('click', async () => {
       const track = state.tracks[Number(button.dataset.trackIndex)];
       state.selectedTrack = track;
+      state.currentView = 'leaderboard';
       renderTrackTabs();
-      renderTitle(track);
+      renderViewTabs();
+      updateVisibleSections();
+      renderPageTitle();
       await loadLeaderboard(track);
     });
   });
@@ -82,6 +142,80 @@ function renderLeaderboardRows(results) {
       <td data-label="País">${row.country || '-'}</td>
       <td data-label="Modelo">${row.model_name || '-'}</td>
       <td data-label="Tiempo">${row.lap_time || '-'}</td>
+    </tr>
+  `).join('');
+}
+
+function renderWeeklySummary(results) {
+  if (!results.length) {
+    elements.weeklySummaryBody.innerHTML = '<tr><td colspan="4" class="muted">Todavía no hay puntuaciones semanales.</td></tr>';
+    return;
+  }
+
+  elements.weeklySummaryBody.innerHTML = results.map((row) => `
+    <tr>
+      <td data-label="#">${row.position}</td>
+      <td data-label="Piloto">${row.pilot_name || '-'}</td>
+      <td data-label="Puntos">${row.total_points}</td>
+      <td data-label="Tracks puntuados">${row.scored_tracks}</td>
+    </tr>
+  `).join('');
+}
+
+function renderWeeklyTrackCards(tracks) {
+  if (!tracks.length) {
+    elements.weeklyTrackCards.innerHTML = '';
+    return;
+  }
+
+  elements.weeklyTrackCards.innerHTML = tracks.map((entry) => `
+    <article class="sub-card">
+      <div class="sub-card-head">
+        <div>
+          <h3>${trackLabel(entry.track)}</h3>
+          <p class="muted">${entry.track.is_official ? `Oficial · track_id ${entry.track.track_id}` : `No oficial · online_id ${entry.track.online_id}`} · ${entry.track.laps} lap${entry.track.laps === 3 ? 's' : ''}</p>
+        </div>
+        <span class="pill">${entry.results.length} pilotos</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Piloto</th>
+              <th>Tiempo</th>
+              <th>Puntos</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${entry.results.length ? entry.results.map((row) => `
+              <tr>
+                <td data-label="#">${row.position}</td>
+                <td data-label="Piloto">${row.playername || '-'}</td>
+                <td data-label="Tiempo">${row.lap_time || '-'}</td>
+                <td data-label="Puntos">${row.points}</td>
+              </tr>
+            `).join('') : '<tr><td colspan="4" class="muted">Sin tiempos para este track.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </article>
+  `).join('');
+}
+
+function renderAnnualRows(results) {
+  if (!results.length) {
+    elements.annualBody.innerHTML = '<tr><td colspan="5" class="muted">No hay puntos anuales guardados todavía.</td></tr>';
+    return;
+  }
+
+  elements.annualBody.innerHTML = results.map((row) => `
+    <tr>
+      <td data-label="#">${row.position}</td>
+      <td data-label="Piloto">${row.pilot_name || '-'}</td>
+      <td data-label="Total puntos">${row.total_points}</td>
+      <td data-label="Semanas puntuadas">${row.weeks_played}</td>
+      <td data-label="Tracks puntuados">${row.scored_tracks}</td>
     </tr>
   `).join('');
 }
@@ -108,6 +242,40 @@ async function loadLeaderboard(track) {
   renderLeaderboardRows(response.data.results || []);
 }
 
+async function loadWeeklyRanking() {
+  elements.weeklyStatus.textContent = 'Calculando ranking semanal…';
+  elements.weeklySummaryBody.innerHTML = '';
+  elements.weeklyTrackCards.innerHTML = '';
+  elements.weeklyNotice.textContent = '';
+
+  const response = await fetchJson('/api/rankings/weekly');
+  if (!response.ok) {
+    elements.weeklyStatus.innerHTML = `<span class="error">Error: ${response.data.error || 'No se pudo calcular el ranking semanal.'}</span>`;
+    return;
+  }
+
+  elements.weeklyStatus.textContent = `${response.data.summary?.length || 0} pilotos en el ranking semanal.`;
+  elements.weeklyNotice.textContent = response.data.meta?.message || '';
+  renderWeeklySummary(response.data.summary || []);
+  renderWeeklyTrackCards(response.data.tracks || []);
+}
+
+async function loadAnnualRanking() {
+  elements.annualStatus.textContent = 'Cargando ranking anual…';
+  elements.annualBody.innerHTML = '';
+  const year = Number(elements.annualYear.value) || state.annualYear;
+  state.annualYear = year;
+
+  const response = await fetchJson(`/api/rankings/annual?season_year=${encodeURIComponent(year)}`);
+  if (!response.ok) {
+    elements.annualStatus.innerHTML = `<span class="error">Error: ${response.data.error || 'No se pudo cargar el ranking anual.'}</span>`;
+    return;
+  }
+
+  elements.annualStatus.textContent = `${response.data.results?.length || 0} pilotos con puntos guardados en ${year}.`;
+  renderAnnualRows(response.data.results || []);
+}
+
 async function loadTracks() {
   elements.status.textContent = 'Cargando tracks activos…';
   const response = await fetchJson('/api/tracks/active');
@@ -130,9 +298,20 @@ async function loadTracks() {
     return;
   }
 
-  renderTitle(state.selectedTrack);
-  await loadLeaderboard(state.selectedTrack);
+  renderPageTitle();
+  await Promise.all([
+    loadLeaderboard(state.selectedTrack),
+    loadWeeklyRanking(),
+    loadAnnualRanking()
+  ]);
 }
 
 elements.reloadTracks.addEventListener('click', loadTracks);
-document.addEventListener('DOMContentLoaded', loadTracks);
+elements.reloadAnnual.addEventListener('click', loadAnnualRanking);
+document.addEventListener('DOMContentLoaded', () => {
+  elements.annualYear.value = String(state.annualYear);
+  renderViewTabs();
+  updateVisibleSections();
+  renderPageTitle();
+  loadTracks();
+});

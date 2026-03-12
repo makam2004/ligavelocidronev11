@@ -12,16 +12,24 @@ export function assertSupabase() {
   }
 }
 
-export async function listActivePilots() {
+export async function listPilots({ activeOnly = false } = {}) {
   assertSupabase();
-  const { data, error } = await supabase
+  let query = supabase
     .from('pilots')
     .select('id, user_id, name, country, active, created_at, updated_at')
-    .eq('active', true)
     .order('name', { ascending: true });
 
+  if (activeOnly) {
+    query = query.eq('active', true);
+  }
+
+  const { data, error } = await query;
   if (error) throw createHttpError(500, `Error al leer pilotos: ${error.message}`);
   return data || [];
+}
+
+export async function listActivePilots() {
+  return listPilots({ activeOnly: true });
 }
 
 export async function listTracks({ activeOnly = false } = {}) {
@@ -81,4 +89,44 @@ export async function bulkUpsertTracks(entries) {
     results.push(await upsertTrack(entry));
   }
   return results;
+}
+
+export async function replaceWeeklyScores({ seasonYear, weekKey, trackUuids = [], entries = [] }) {
+  assertSupabase();
+
+  const uniqueTrackUuids = Array.from(new Set(trackUuids.filter(Boolean)));
+  if (uniqueTrackUuids.length) {
+    const { error: deleteError } = await supabase
+      .from('weekly_points')
+      .delete()
+      .eq('season_year', seasonYear)
+      .eq('week_key', weekKey)
+      .in('track_uuid', uniqueTrackUuids);
+
+    if (deleteError) throw createHttpError(500, `Error al limpiar puntuaciones semanales: ${deleteError.message}`);
+  }
+
+  if (!entries.length) return [];
+
+  const { data, error } = await supabase
+    .from('weekly_points')
+    .insert(entries)
+    .select('id, season_year, week_key, track_uuid, pilot_name, pilot_key, points, position');
+
+  if (error) throw createHttpError(500, `Error al guardar puntuaciones semanales: ${error.message}`);
+  return data || [];
+}
+
+export async function listWeeklyScoresBySeason({ seasonYear }) {
+  assertSupabase();
+  const { data, error } = await supabase
+    .from('weekly_points')
+    .select('id, season_year, week_key, track_uuid, track_name, track_reference, laps, pilot_uuid, pilot_user_id, pilot_name, pilot_key, position, points, lap_time, lap_time_ms, created_at')
+    .eq('season_year', seasonYear)
+    .order('week_key', { ascending: true })
+    .order('track_name', { ascending: true })
+    .order('position', { ascending: true });
+
+  if (error) throw createHttpError(500, `Error al leer puntuaciones anuales: ${error.message}`);
+  return data || [];
 }

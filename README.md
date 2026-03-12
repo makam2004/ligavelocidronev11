@@ -1,260 +1,120 @@
-# Liga Velocidrone · Render + Supabase + Telegram
+# Liga Velocidrone · versión con ranking semanal y anual
 
-Este proyecto es una versión **limpia, corregida y lista para evolucionar** de tu app original.
+Esta versión deja la app preparada para tres vistas en la web:
 
-## Qué se ha corregido
+1. **Leaderboard por track**
+2. **Ranking semanal** calculado con los tracks activos
+3. **Ranking anual** leído desde Supabase
 
-- **Una sola web real**: ahora solo existe un frontend en `server/public`.
-- **Backend modular**: el servidor ya no está todo mezclado en un único archivo gigante.
-- **Admin protegido**: las rutas de escritura usan `ADMIN_KEY` obligatoria.
-- **Supabase alineado**: `supabase/schema.sql` ya coincide con lo que espera el backend.
-- **Tracks oficiales y no oficiales**: se guardan correctamente sin pisarse entre 1 lap y 3 laps.
-- **Telegram preparado**: el bot ya tiene webhook y comandos básicos.
-- **Render simplificado**: tienes `render.yaml` para desplegar sin complicarte.
-
----
-
-## Estructura completa
+## Estructura principal
 
 ```text
-velocidronev10_fixed/
-├── .dockerignore
-├── .env.example
-├── .gitignore
-├── Dockerfile
-├── README.md
-├── package.json
-├── render.yaml
-├── scripts/
-│   └── smoke-test.mjs
-├── server/
-│   ├── app.js
-│   ├── config.js
-│   ├── index.js
-│   ├── middleware/
-│   │   └── adminAuth.js
-│   ├── public/
-│   │   ├── admin.html
-│   │   ├── index.html
-│   │   ├── assets/
-│   │   │   └── background.png
-│   │   ├── css/
-│   │   │   ├── style-home.css
-│   │   │   └── style-ui.css
-│   │   └── js/
-│   │       ├── admin.js
-│   │       └── app.js
-│   ├── services/
-│   │   ├── database.js
-│   │   ├── league.js
-│   │   └── telegram.js
-│   └── utils/
-│       ├── http.js
-│       ├── leaderboard.js
-│       └── normalize.js
-└── supabase/
-    ├── schema.sql
-    └── seed.sql
+server/
+  app.js                      # rutas Express
+  config.js                   # variables de entorno
+  index.js                    # arranque del servidor
+  middleware/
+    adminAuth.js              # protección por ADMIN_KEY
+  services/
+    database.js               # Supabase: pilotos, tracks y weekly_points
+    league.js                 # lectura de tiempos Velocidrone
+    rankings.js               # puntos semanales y ranking anual
+    telegram.js               # webhook de Telegram
+  utils/
+    date.js                   # cálculo de semana ISO
+    http.js                   # errores HTTP
+    leaderboard.js            # parser y normalización Velocidrone
+    normalize.js             # utilidades de limpieza
+  public/
+    index.html                # web pública con pestañas
+    admin.html                # panel admin
+    css/
+      style-ui.css
+      style-home.css
+    js/
+      app.js
+      admin.js
+supabase/
+  schema.sql                  # tablas y policies
+  seed.sql                    # datos de ejemplo
+scripts/
+  smoke-test.mjs              # prueba básica local
+render.yaml                   # despliegue en Render
+Dockerfile                    # despliegue por Docker si lo prefieres
 ```
 
----
+## Tablas de Supabase
 
-## Qué hace cada carpeta
+### `pilots`
+Pilotos de tu liga.
 
-### Raíz del proyecto
+### `tracks`
+Tracks configurados. Lo normal para una semana es tener **2 tracks activos**.
 
-- **`.env.example`**: plantilla de variables de entorno.
-- **`package.json`**: dependencias y comandos.
-- **`render.yaml`**: despliegue recomendado en Render.
-- **`Dockerfile`**: opción alternativa si alguna vez quieres desplegar con Docker.
-- **`README.md`**: guía del proyecto.
+### `weekly_points`
+Guarda los puntos de cada semana para construir el ranking anual.
 
-### `server/`
+Cada vez que pulses **Guardar semana** en `/admin`, la app:
+- lee los tracks activos,
+- calcula los puntos por posición,
+- guarda el resultado en `weekly_points`,
+- y el ranking anual se recalcula leyendo esa tabla.
 
-Aquí vive todo el backend y la web estática.
+## Reparto de puntos
 
-- **`index.js`**: arranca el servidor.
-- **`app.js`**: define rutas API y la web.
-- **`config.js`**: lee todas las variables de entorno.
-
-#### `server/middleware/`
-
-- **`adminAuth.js`**: comprueba la `ADMIN_KEY`.
-
-#### `server/services/`
-
-- **`database.js`**: conexión y consultas a Supabase.
-- **`league.js`**: lógica de tracks y leaderboard.
-- **`telegram.js`**: webhook, comandos y llamadas a Telegram.
-
-#### `server/utils/`
-
-- **`http.js`**: manejo de errores y funciones async.
-- **`leaderboard.js`**: parseo y formateo de tiempos/leaderboards.
-- **`normalize.js`**: helpers de validación y normalización.
-
-#### `server/public/`
-
-Tu web real.
-
-- **`index.html`**: página pública.
-- **`admin.html`**: panel admin.
-- **`js/app.js`**: lógica de la web pública.
-- **`js/admin.js`**: lógica del panel admin.
-- **`css/*.css`**: estilos.
-- **`assets/background.png`**: fondo visual.
-
-### `supabase/`
-
-- **`schema.sql`**: crea las tablas correctas.
-- **`seed.sql`**: datos de ejemplo para empezar.
-
-### `scripts/`
-
-- **`smoke-test.mjs`**: prueba automática básica del servidor.
-
----
+- 1º → 10
+- 2º → 9
+- 3º → 8
+- 4º → 7
+- 5º → 6
+- 6º → 5
+- 7º → 4
+- 8º → 3
+- 9º → 2
+- resto → 1
 
 ## Variables de entorno
 
-Copia `.env.example` a `.env` y rellena lo siguiente:
-
-### Obligatorio para funcionar de verdad
-
+### Necesarias
 - `ADMIN_KEY`
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE`
 - `VELO_API_TOKEN`
 
-### Obligatorio si quieres Telegram
-
+### Telegram
 - `PUBLIC_BASE_URL`
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_WEBHOOK_SECRET`
 
-### Opcional
-
+### Opcionales
 - `TELEGRAM_ALLOWED_CHAT_IDS`
 - `ALLOWED_ORIGINS`
 - `SIM_VERSION`
 - `CACHE_TTL_MS`
+- `PORT`
 
----
+## Cómo actualizar Supabase
 
-## Cómo arrancarlo en local
+Como ya tienes variables en Render, aquí lo importante es la base de datos:
 
-1. Copia el archivo de ejemplo:
+1. Abre Supabase SQL Editor.
+2. Ejecuta `supabase/schema.sql`.
+3. Después ejecuta `supabase/seed.sql` solo si quieres datos de ejemplo.
 
-   ```bash
-   cp .env.example .env
-   ```
+## Cómo guardar una semana
 
-2. Instala dependencias:
+1. Entra en `/admin`
+2. Pega tu `ADMIN_KEY`
+3. Asegúrate de que tienes los **2 tracks de la semana** marcados como activos
+4. Pulsa **Guardar semana**
+5. Eso insertará o reemplazará la puntuación de esa semana en `weekly_points`
 
-   ```bash
-   npm install
-   ```
+## Endpoints nuevos
 
-3. Arranca el servidor:
+- `GET /api/rankings/weekly`
+- `GET /api/rankings/annual?season_year=2026`
+- `POST /api/admin/rankings/award-weekly`
 
-   ```bash
-   npm start
-   ```
+## Nota importante
 
-4. Abre:
-
-   - Web pública: `http://localhost:10000/`
-   - Panel admin: `http://localhost:10000/admin`
-
----
-
-## Cómo cargar Supabase
-
-1. Entra en Supabase.
-2. Abre el editor SQL.
-3. Ejecuta primero `supabase/schema.sql`.
-4. Si quieres datos de ejemplo, ejecuta después `supabase/seed.sql`.
-
----
-
-## Endpoints principales
-
-### Lectura
-
-- `GET /api/health`
-- `GET /api/pilots/active`
-- `GET /api/tracks`
-- `GET /api/tracks/active`
-- `GET /api/leaderboard`
-- `GET /api/telegram/status`
-
-### Admin (requieren `x-admin-key`)
-
-- `POST /api/admin/tracks/upsert`
-- `POST /api/admin/tracks/bulk-upsert`
-- `POST /api/admin/telegram/register-webhook`
-
-### Telegram webhook
-
-- `POST /api/telegram/webhook/:secret`
-
----
-
-## Comandos del bot de Telegram
-
-Una vez configurado el webhook:
-
-- `/ping`
-- `/tracks`
-- `/leaderboard 1`
-- `/leaderboard 3`
-- `/lb 1`
-- `/lb 3`
-
----
-
-## Cómo desplegar en Render
-
-### Opción recomendada
-
-Usa `render.yaml`.
-
-1. Sube este proyecto a GitHub.
-2. Crea un nuevo servicio en Render usando el repositorio.
-3. Render leerá `render.yaml`.
-4. Añade las variables secretas que faltan.
-5. Despliega.
-
-### Después del despliegue
-
-1. Pon `PUBLIC_BASE_URL` con tu URL real de Render.
-2. Abre `/admin`.
-3. Pega tu `ADMIN_KEY`.
-4. Pulsa **Registrar webhook** para Telegram.
-
----
-
-## Prueba rápida automática
-
-Puedes lanzar:
-
-```bash
-npm run smoke-test
-```
-
-Esta prueba verifica:
-
-- arranque del servidor
-- carga de la web pública
-- carga del panel admin
-- protección con `ADMIN_KEY`
-- estado del webhook de Telegram
-
----
-
-## Notas importantes
-
-- El servidor usa la **service role** de Supabase: no la pongas nunca en frontend.
-- El frontend no escribe directamente en Supabase: todo pasa por el backend.
-- Si no configuras Velocidrone, la web cargará pero el leaderboard no podrá resolverse.
-- Si no configuras Telegram, la web y el panel seguirán funcionando.
+El ranking anual **no se inventa en memoria**: sale de Supabase. Si cambias los tiempos de una semana y vuelves a pulsar **Guardar semana** con la misma `week_key`, esa semana se recalcula y se reemplaza.
