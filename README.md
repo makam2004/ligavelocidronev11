@@ -1,11 +1,11 @@
-# Liga Velocidrone · versión con ranking semanal y anual
+# Liga Velocidrone · versión con Telegram /top y monitor de mejoras
 
-Esta versión deja la app preparada para tres vistas en la web y añade el alta pública de pilotos:
+Esta versión mantiene todo lo que ya te funcionaba y añade una capa nueva para Telegram:
 
-1. **Leaderboard por track**
-2. **Ranking semanal** calculado con los tracks activos
-3. **Ranking anual** leído desde Supabase
-4. **Alta de nuevos pilotos** desde la web pública
+1. `/top` en Telegram con los 2 tracks activos
+2. monitor automático de `/top`
+3. monitor automático de **mejoras de tiempo**
+4. aviso en Telegram cuando un piloto mejora su mejor marca en uno de los tracks activos
 
 ## Estructura principal
 
@@ -13,19 +13,19 @@ Esta versión deja la app preparada para tres vistas en la web y añade el alta 
 server/
   app.js                      # rutas Express
   config.js                   # variables de entorno
-  index.js                    # arranque del servidor
+  index.js                    # arranque del servidor y monitores
   middleware/
     adminAuth.js              # protección por ADMIN_KEY
   services/
-    database.js               # Supabase: pilotos, tracks y weekly_points
+    database.js               # Supabase: pilotos, tracks, weekly_points y monitor state
     league.js                 # lectura de tiempos Velocidrone
     rankings.js               # puntos semanales y ranking anual
-    telegram.js               # webhook, /top y monitor automático de Telegram
+    telegram.js               # webhook, /top y monitores automáticos
   utils/
     date.js                   # cálculo de semana ISO
     http.js                   # errores HTTP
     leaderboard.js            # parser y normalización Velocidrone
-    normalize.js             # utilidades de limpieza
+    normalize.js              # utilidades de limpieza
   public/
     index.html                # web pública con pestañas
     admin.html                # panel admin, solo accesible por /admin
@@ -57,24 +57,15 @@ Tracks configurados. Lo normal para una semana es tener **2 tracks activos**.
 ### `weekly_points`
 Guarda los puntos de cada semana para construir el ranking anual.
 
-Cada vez que pulses **Guardar semana** en `/admin`, la app:
-- lee los tracks activos,
-- calcula los puntos por posición,
-- guarda el resultado en `weekly_points`,
-- y el ranking anual se recalcula leyendo esa tabla.
+### `leaderboard_monitor_state`
+Nueva tabla.
 
-## Reparto de puntos
+Guarda la **mejor marca conocida por piloto y track** para que el monitor pueda comparar cada 15 minutos y detectar si ha habido una mejora real.
 
-- 1º → 10
-- 2º → 9
-- 3º → 8
-- 4º → 7
-- 5º → 6
-- 6º → 5
-- 7º → 4
-- 8º → 3
-- 9º → 2
-- resto → 1
+La primera vez que corre el monitor:
+- guarda el estado base,
+- pero **no manda avisos**,
+- y a partir de ahí ya solo notifica cuando detecta una mejora real.
 
 ## Variables de entorno
 
@@ -84,124 +75,103 @@ Cada vez que pulses **Guardar semana** en `/admin`, la app:
 - `SUPABASE_SERVICE_ROLE`
 - `VELO_API_TOKEN`
 
-### Telegram
+### Telegram necesarias
 - `PUBLIC_BASE_URL`
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_WEBHOOK_SECRET`
 
-### Opcionales
+### Telegram para envíos automáticos
 - `TELEGRAM_ALLOWED_CHAT_IDS`
 - `TELEGRAM_TOP_AUTOPOST_ENABLED`
 - `TELEGRAM_TOP_INTERVAL_MINUTES`
 - `TELEGRAM_TOP_AUTOPOST_ON_BOOT`
+- `TELEGRAM_IMPROVEMENT_MONITOR_ENABLED`
+- `TELEGRAM_IMPROVEMENT_INTERVAL_MINUTES`
+- `TELEGRAM_IMPROVEMENT_MONITOR_ON_BOOT`
+
+### Otras opcionales
 - `ALLOWED_ORIGINS`
 - `SIM_VERSION`
 - `CACHE_TTL_MS`
 - `PORT`
 
+## Valores recomendados para tu caso
+
+```text
+TELEGRAM_TOP_AUTOPOST_ENABLED=true
+TELEGRAM_TOP_INTERVAL_MINUTES=360
+TELEGRAM_TOP_AUTOPOST_ON_BOOT=false
+TELEGRAM_IMPROVEMENT_MONITOR_ENABLED=true
+TELEGRAM_IMPROVEMENT_INTERVAL_MINUTES=15
+TELEGRAM_IMPROVEMENT_MONITOR_ON_BOOT=false
+```
+
 ## Cómo actualizar Supabase
 
-Como ya tienes variables en Render, aquí lo importante es la base de datos:
+Como has añadido una función nueva, **sí tienes que ejecutar otra vez** el esquema:
 
 1. Abre Supabase SQL Editor.
 2. Ejecuta `supabase/schema.sql`.
-3. Después ejecuta `supabase/seed.sql` solo si quieres datos de ejemplo.
+3. No hace falta tocar `seed.sql` salvo que quieras datos de ejemplo.
 
-## Cómo guardar una semana
+La parte importante es que se cree la tabla nueva:
+- `leaderboard_monitor_state`
 
-1. Entra en `/admin`
-2. Pega tu `ADMIN_KEY`
-3. Asegúrate de que tienes los **2 tracks de la semana** marcados como activos
-4. Pulsa **Guardar semana**
-5. Eso insertará o reemplazará la puntuación de esa semana en `weekly_points`
+## Qué hace el monitor de mejoras
 
-## Endpoints nuevos
+Cada ciclo:
+- lee los tracks activos,
+- pide el leaderboard filtrado por tus pilotos de liga,
+- compara el mejor tiempo actual de cada piloto contra el mejor tiempo guardado en `leaderboard_monitor_state`,
+- y si detecta una mejora, manda un mensaje a Telegram.
 
-- `GET /api/rankings/weekly`
-- `GET /api/rankings/annual?season_year=2026`
-- `POST /api/admin/rankings/award-weekly`
+Formato aproximado:
 
-## Nota importante
+```text
+🏁 Liga Semanal Velocidrone
+⏱️ Nueva mejora de tiempo en el Track 2
+📍 Nombre del track
+👤 Piloto: ArroyaPasto
+🔻 Tiempo anterior: 47.44s
+✅ Nuevo tiempo: 46.31s
+📅 13/3/2026, 16:08:45
+```
 
-El ranking anual **no se inventa en memoria**: sale de Supabase. Si cambias los tiempos de una semana y vuelves a pulsar **Guardar semana** con la misma `week_key`, esa semana se recalcula y se reemplaza.
+## Comandos y endpoints de Telegram
 
-## Alta de nuevos pilotos
+### Comando Telegram
+- `/top`
 
-En la web pública aparece un botón **Alta de nuevo piloto**.
-
-Flujo:
-1. El piloto rellena su nombre público de Velocidrone.
-2. El sistema genera un ID interno y guarda la solicitud en `pilots` con `active = false`.
-3. El usuario ve el mensaje **Pendiente de aprobación por el administrador**.
-4. En `/admin` puedes revisar la lista y pulsar **Activar** o **Desactivar**.
-
-Esto evita que un piloto pase a competir directamente sin revisión previa.
-
-## Admin oculto en la web pública
-
-El panel ya no aparece enlazado en la página principal.
-
-- **No hay botón visible de admin en la home**
-- El panel sigue existiendo en **`/admin`**
-- La protección real la sigue haciendo `ADMIN_KEY` en las rutas admin
-
-## Endpoints añadidos para pilotos
-
-- `POST /api/pilots/register`
-- `GET /api/admin/pilots`
-- `PATCH /api/admin/pilots/:id/status`
-
-## ¿Hay que cambiar Supabase?
-
-No. Para esta mejora **no necesitas cambiar el esquema**: se reutiliza la tabla `pilots` que ya tenías.
-
-
-## Cambio reciente: alta pública de pilotos
-
-- El formulario público de alta ya no pide ID manual ni país.
-- El sistema genera automáticamente un ID interno al enviar la solicitud.
-- La solicitud muestra al usuario el mensaje: `Pendiente de aprobación por el administrador.`
-- El país no se pide en el alta porque con la integración actual no hay una lectura fiable del país de un piloto concreto desde Velocidrone en ese momento.
-- Para que los tiempos se relacionen bien con la liga, el piloto debe escribir exactamente el mismo nombre que usa en Velocidrone.
-
-
-## Telegram: comando /top y monitor automático
-
-Se ha añadido el comando de bot:
-
-- `/top` → envía en Telegram el top actual de los tracks activos
-
-Formato:
-- bloque del **track 1** con ranking actual
-- bloque del **track 2** con ranking actual
-- enlace final a la web
-
-El envío automático usa los chats definidos en `TELEGRAM_ALLOWED_CHAT_IDS`.
-
-### Variables recomendadas para Telegram
-
-- `TELEGRAM_ALLOWED_CHAT_IDS=-1001234567890`
-- `TELEGRAM_TOP_AUTOPOST_ENABLED=true`
-- `TELEGRAM_TOP_INTERVAL_MINUTES=360`
-- `TELEGRAM_TOP_AUTOPOST_ON_BOOT=false`
-
-### Registrar webhook
-
-1. Despliega la app en Render
-2. Entra en `/admin`
-3. Usa tu `ADMIN_KEY`
-4. Llama al endpoint admin para registrar el webhook o usa tu herramienta habitual
-
-Endpoint:
+### Endpoints admin
 - `POST /api/admin/telegram/register-webhook`
-
-### Forzar un envío manual del /top
-
-Endpoint admin:
 - `POST /api/admin/telegram/send-top`
+- `POST /api/admin/telegram/check-improvements`
 
-Si no mandas `chat_ids`, enviará el mensaje a todos los chats de `TELEGRAM_ALLOWED_CHAT_IDS`.
+### Panel admin
+En `/admin` tienes ahora un botón:
+- **Comprobar mejoras ahora**
 
-### Nota operativa
+Eso sirve para probar el monitor sin esperar los 15 minutos.
 
-El monitor automático del bot vive dentro del proceso Node de la web. Si el hosting pausa o reinicia el servicio, el contador de 6 horas vuelve a empezar cuando el proceso arranca de nuevo.
+## Comportamiento importante
+
+### Si todavía no tienes `TELEGRAM_ALLOWED_CHAT_IDS`
+- el comando `/top` puede seguir funcionando por webhook en chats entrantes,
+- pero los envíos automáticos del monitor necesitan saber a qué chat mandar los mensajes.
+
+### Si usas Render Free
+Los monitores viven dentro del proceso Node. Si Render duerme el servicio o lo reinicia, el contador se reinicia con él.
+
+## Alta pública de pilotos
+
+Se mantiene igual:
+- el piloto escribe su nombre de Velocidrone,
+- se genera un ID interno,
+- queda pendiente,
+- y tú lo activas desde `/admin`.
+
+## Ranking semanal y anual
+
+Se mantiene igual:
+- el semanal se calcula con los tracks activos,
+- el anual sale de `weekly_points` en Supabase.

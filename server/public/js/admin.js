@@ -41,6 +41,7 @@ const els = {
   awardWeekly: document.getElementById('awardWeekly'),
   weeklyResult: document.getElementById('weeklyResult'),
   registerWebhook: document.getElementById('registerWebhook'),
+  checkImprovements: document.getElementById('checkImprovements'),
   telegramResult: document.getElementById('telegramResult'),
   reloadStatus: document.getElementById('reloadStatus'),
   healthBox: document.getElementById('healthBox'),
@@ -194,10 +195,22 @@ async function registerWebhook() {
   setResultBox(els.telegramResult, response.data);
 }
 
+
+async function checkImprovements() {
+  const response = await fetchJson('/api/admin/telegram/check-improvements', {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify({ notify: true })
+  });
+  setResultBox(els.telegramResult, response.data);
+}
+
+
 els.isOfficial.addEventListener('change', toggleTrackFields);
 els.saveTrack.addEventListener('click', saveTrack);
 els.awardWeekly.addEventListener('click', awardWeekly);
 els.registerWebhook.addEventListener('click', registerWebhook);
+els.checkImprovements.addEventListener('click', checkImprovements);
 els.reloadStatus.addEventListener('click', loadHealth);
 els.reloadTracksList.addEventListener('click', loadTracks);
 els.reloadPilotsList.addEventListener('click', loadPilots);

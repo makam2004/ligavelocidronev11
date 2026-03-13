@@ -1,9 +1,9 @@
 import { config } from '../config.js';
-import { listTracks } from './database.js';
+import { listTracks, listLeaderboardMonitorState, upsertLeaderboardMonitorState } from './database.js';
 import { getLeagueLeaderboard } from './league.js';
 import { buildLeaderboardMessage } from '../utils/leaderboard.js';
 import { createHttpError } from '../utils/http.js';
-import { parseLapCount } from '../utils/normalize.js';
+import { normalizeText, parseLapCount } from '../utils/normalize.js';
 
 let topAutopostTimer = null;
 let topAutopostState = {
@@ -15,6 +15,21 @@ let topAutopostState = {
   lastRunOk: null,
   lastError: null,
   startedAt: null
+};
+
+let improvementMonitorTimer = null;
+let improvementMonitorState = {
+  enabled: false,
+  intervalMs: 0,
+  running: false,
+  targetChats: [],
+  lastRunAt: null,
+  lastRunOk: null,
+  lastError: null,
+  startedAt: null,
+  lastCheckedTracks: 0,
+  lastImprovements: 0,
+  bootstrapped: false
 };
 
 function telegramApiUrl(method) {
@@ -66,6 +81,63 @@ function buildTrackSection(track, results) {
   return lines.concat(topRows).join('\n');
 }
 
+function buildPilotKey(row) {
+  const userId = Number(row.user_id);
+  if (Number.isFinite(userId) && userId > 0) {
+    return `user:${userId}`;
+  }
+  return `name:${normalizeText(row.playername)}`;
+}
+
+function formatSpanishDateTime(date = new Date()) {
+  return new Intl.DateTimeFormat('es-ES', {
+    day: 'numeric',
+    month: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).format(date);
+}
+
+function buildImprovementMessage({ trackLabel, track, pilotName, previousTime, newTime, happenedAt = new Date() }) {
+  const lines = [
+    '🏁 Liga Semanal Velocidrone',
+    `⏱️ Nueva mejora de tiempo en el ${trackLabel}`,
+    `📍 ${track.name}`,
+    `👤 Piloto: ${pilotName}`,
+    `🔻 Tiempo anterior: ${previousTime}`,
+    `✅ Nuevo tiempo: ${newTime}`,
+    `📅 ${formatSpanishDateTime(happenedAt)}`
+  ];
+
+  return lines.join('\n');
+}
+
+function createMonitorRow(track, row) {
+  return {
+    track_uuid: track.id,
+    track_name: track.name,
+    track_reference: track.is_official ? String(track.track_id) : String(track.online_id),
+    laps: Number(track.laps),
+    pilot_user_id: Number.isFinite(Number(row.user_id)) ? Number(row.user_id) : null,
+    pilot_name: row.playername || 'Sin nombre',
+    pilot_key: buildPilotKey(row),
+    best_lap_time: row.lap_time || null,
+    best_lap_time_ms: Number(row.lap_time_ms),
+    last_seen_at: new Date().toISOString()
+  };
+}
+
+function buildExistingStateMap(rows) {
+  const map = new Map();
+  for (const row of rows) {
+    map.set(`${row.track_uuid}::${row.pilot_key}`, row);
+  }
+  return map;
+}
+
 export async function buildTelegramTopMessage() {
   const tracks = await listTracks({ activeOnly: true });
   if (!tracks.length) {
@@ -96,7 +168,8 @@ export function getTelegramStatus() {
     hasBotToken: Boolean(config.telegram.botToken),
     hasWebhookSecret: Boolean(config.telegram.webhookSecret),
     allowedChats: getBroadcastChatIds(),
-    topAutopost: { ...topAutopostState }
+    topAutopost: { ...topAutopostState },
+    improvementMonitor: { ...improvementMonitorState }
   };
 }
 
@@ -180,6 +253,27 @@ export async function sendTopMessageToChats(chatIds = getBroadcastChatIds()) {
   };
 }
 
+async function sendMessagesToChats(messages = [], chatIds = getBroadcastChatIds()) {
+  const targets = Array.from(new Set((chatIds || []).map(String).filter(Boolean)));
+  if (!targets.length) {
+    throw createHttpError(400, 'No hay chats configurados para enviar mensajes del monitor. Revisa TELEGRAM_ALLOWED_CHAT_IDS.');
+  }
+
+  const deliveries = [];
+  for (const chatId of targets) {
+    for (const text of messages) {
+      await sendTelegramMessage(chatId, text);
+      deliveries.push({ chatId, ok: true });
+    }
+  }
+
+  return {
+    chatCount: targets.length,
+    messageCount: messages.length,
+    deliveries
+  };
+}
+
 async function runTopAutopostCycle() {
   if (topAutopostState.running) return;
   topAutopostState.running = true;
@@ -242,6 +336,159 @@ export function startTelegramTopAutopostMonitor() {
   }
 
   return { ...topAutopostState };
+}
+
+export async function checkLeaderboardImprovements({ chatIds = getBroadcastChatIds(), notify = true } = {}) {
+  const tracks = await listTracks({ activeOnly: true });
+  if (!tracks.length) {
+    return {
+      checked_tracks: 0,
+      improvements: [],
+      notifications: null,
+      bootstrapped: false,
+      message: 'No hay tracks activos para revisar mejoras.'
+    };
+  }
+
+  const existingRows = await listLeaderboardMonitorState({ trackUuids: tracks.map((track) => track.id) });
+  const existingState = buildExistingStateMap(existingRows);
+  const upserts = [];
+  const improvements = [];
+
+  for (const [trackIndex, track] of tracks.entries()) {
+    const leaderboard = await getLeagueLeaderboard({
+      query: track.is_official
+        ? { track_id: track.track_id, laps: track.laps }
+        : { online_id: track.online_id, laps: track.laps }
+    });
+
+    for (const row of leaderboard.results || []) {
+      if (!Number.isFinite(Number(row.lap_time_ms)) || Number(row.lap_time_ms) <= 0) continue;
+
+      const monitorRow = createMonitorRow(track, row);
+      const stateKey = `${track.id}::${monitorRow.pilot_key}`;
+      const previous = existingState.get(stateKey);
+
+      if (!previous) {
+        upserts.push(monitorRow);
+        existingState.set(stateKey, monitorRow);
+        continue;
+      }
+
+      if (Number(monitorRow.best_lap_time_ms) < Number(previous.best_lap_time_ms)) {
+        upserts.push(monitorRow);
+        existingState.set(stateKey, { ...previous, ...monitorRow });
+        improvements.push({
+          track_uuid: track.id,
+          track_label: `Track ${trackIndex + 1}`,
+          track_name: track.name,
+          laps: Number(track.laps),
+          pilot_name: row.playername || previous.pilot_name || 'Sin nombre',
+          pilot_key: monitorRow.pilot_key,
+          previous_time: previous.best_lap_time || `${previous.best_lap_time_ms} ms`,
+          previous_time_ms: Number(previous.best_lap_time_ms),
+          new_time: row.lap_time || `${monitorRow.best_lap_time_ms} ms`,
+          new_time_ms: Number(monitorRow.best_lap_time_ms),
+          message: buildImprovementMessage({
+            trackLabel: `Track ${trackIndex + 1}`,
+            track,
+            pilotName: row.playername || previous.pilot_name || 'Sin nombre',
+            previousTime: previous.best_lap_time || `${previous.best_lap_time_ms} ms`,
+            newTime: row.lap_time || `${monitorRow.best_lap_time_ms} ms`
+          })
+        });
+      }
+    }
+  }
+
+  if (upserts.length) {
+    await upsertLeaderboardMonitorState(upserts);
+  }
+
+  let notifications = null;
+  if (notify && improvements.length) {
+    notifications = await sendMessagesToChats(improvements.map((item) => item.message), chatIds);
+  }
+
+  return {
+    checked_tracks: tracks.length,
+    improvements,
+    notifications,
+    bootstrapped: existingRows.length === 0,
+    message: improvements.length
+      ? `Se han detectado ${improvements.length} mejora(s) de tiempo.`
+      : 'No se han detectado mejoras de tiempo en esta comprobación.'
+  };
+}
+
+async function runImprovementMonitorCycle() {
+  if (improvementMonitorState.running) return null;
+  improvementMonitorState.running = true;
+  improvementMonitorState.lastRunAt = new Date().toISOString();
+
+  try {
+    const result = await checkLeaderboardImprovements();
+    improvementMonitorState.lastRunOk = true;
+    improvementMonitorState.lastError = null;
+    improvementMonitorState.lastCheckedTracks = result.checked_tracks || 0;
+    improvementMonitorState.lastImprovements = result.improvements?.length || 0;
+    improvementMonitorState.bootstrapped = !result.bootstrapped ? improvementMonitorState.bootstrapped : true;
+    return result;
+  } catch (error) {
+    improvementMonitorState.lastRunOk = false;
+    improvementMonitorState.lastError = error.message || 'Error desconocido revisando mejoras de tiempos.';
+    console.error('❌ Error en el monitor de mejoras de Telegram:', error);
+    return null;
+  } finally {
+    improvementMonitorState.running = false;
+  }
+}
+
+export function startTelegramImprovementMonitor() {
+  if (improvementMonitorTimer) {
+    return { ...improvementMonitorState, alreadyStarted: true };
+  }
+
+  const targetChats = getBroadcastChatIds();
+  const intervalMinutes = Math.max(1, Number(config.telegram.improvementIntervalMinutes) || 15);
+  const intervalMs = intervalMinutes * 60 * 1000;
+  const enabled = Boolean(config.telegram.improvementMonitorEnabled && config.telegram.botToken && targetChats.length);
+
+  improvementMonitorState = {
+    enabled,
+    intervalMs,
+    running: false,
+    targetChats,
+    lastRunAt: null,
+    lastRunOk: null,
+    lastError: enabled ? null : 'Monitor desactivado o sin chats configurados.',
+    startedAt: new Date().toISOString(),
+    lastCheckedTracks: 0,
+    lastImprovements: 0,
+    bootstrapped: false
+  };
+
+  if (!enabled) {
+    return { ...improvementMonitorState };
+  }
+
+  improvementMonitorTimer = setInterval(() => {
+    runImprovementMonitorCycle().catch((error) => {
+      console.error('❌ Error inesperado en setInterval del monitor de mejoras:', error);
+    });
+  }, intervalMs);
+
+  if (typeof improvementMonitorTimer.unref === 'function') {
+    improvementMonitorTimer.unref();
+  }
+
+  if (config.telegram.improvementMonitorOnBoot) {
+    runImprovementMonitorCycle().catch((error) => {
+      console.error('❌ Error en la primera comprobación automática de mejoras:', error);
+    });
+  }
+
+  return { ...improvementMonitorState };
 }
 
 export async function handleTelegramUpdate(update) {

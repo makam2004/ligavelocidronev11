@@ -42,7 +42,10 @@ export const config = {
     allowedChatIds: asList(process.env.TELEGRAM_ALLOWED_CHAT_IDS),
     topAutopostEnabled: asBoolean(process.env.TELEGRAM_TOP_AUTOPOST_ENABLED, true),
     topAutopostIntervalMinutes: asNumber(process.env.TELEGRAM_TOP_INTERVAL_MINUTES, 360),
-    topAutopostOnBoot: asBoolean(process.env.TELEGRAM_TOP_AUTOPOST_ON_BOOT, false)
+    topAutopostOnBoot: asBoolean(process.env.TELEGRAM_TOP_AUTOPOST_ON_BOOT, false),
+    improvementMonitorEnabled: asBoolean(process.env.TELEGRAM_IMPROVEMENT_MONITOR_ENABLED, true),
+    improvementIntervalMinutes: asNumber(process.env.TELEGRAM_IMPROVEMENT_INTERVAL_MINUTES, 15),
+    improvementMonitorOnBoot: asBoolean(process.env.TELEGRAM_IMPROVEMENT_MONITOR_ON_BOOT, false)
   }
 };
 
@@ -62,7 +65,10 @@ export function getConfigSummary() {
       telegramAllowedChatIds: config.telegram.allowedChatIds.length,
       telegramTopAutopostEnabled: config.telegram.topAutopostEnabled,
       telegramTopAutopostIntervalMinutes: config.telegram.topAutopostIntervalMinutes,
-      telegramTopAutopostOnBoot: config.telegram.topAutopostOnBoot
+      telegramTopAutopostOnBoot: config.telegram.topAutopostOnBoot,
+      telegramImprovementMonitorEnabled: config.telegram.improvementMonitorEnabled,
+      telegramImprovementIntervalMinutes: config.telegram.improvementIntervalMinutes,
+      telegramImprovementMonitorOnBoot: config.telegram.improvementMonitorOnBoot
     }
   };
 }

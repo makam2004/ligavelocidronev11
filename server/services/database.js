@@ -209,3 +209,35 @@ export async function listWeeklyScoresBySeason({ seasonYear }) {
   if (error) throw createHttpError(500, `Error al leer puntuaciones anuales: ${error.message}`);
   return data || [];
 }
+
+export async function listLeaderboardMonitorState({ trackUuids = [] } = {}) {
+  assertSupabase();
+
+  let query = supabase
+    .from('leaderboard_monitor_state')
+    .select('id, track_uuid, track_name, track_reference, laps, pilot_user_id, pilot_name, pilot_key, best_lap_time, best_lap_time_ms, last_seen_at, created_at, updated_at')
+    .order('track_name', { ascending: true })
+    .order('pilot_name', { ascending: true });
+
+  const uniqueTrackUuids = Array.from(new Set(trackUuids.filter(Boolean)));
+  if (uniqueTrackUuids.length) {
+    query = query.in('track_uuid', uniqueTrackUuids);
+  }
+
+  const { data, error } = await query;
+  if (error) throw createHttpError(500, `Error al leer el estado del monitor de leaderboard: ${error.message}`);
+  return data || [];
+}
+
+export async function upsertLeaderboardMonitorState(entries = []) {
+  assertSupabase();
+  if (!entries.length) return [];
+
+  const { data, error } = await supabase
+    .from('leaderboard_monitor_state')
+    .upsert(entries, { onConflict: 'track_uuid,pilot_key' })
+    .select('id, track_uuid, track_name, track_reference, laps, pilot_user_id, pilot_name, pilot_key, best_lap_time, best_lap_time_ms, last_seen_at, created_at, updated_at');
+
+  if (error) throw createHttpError(500, `Error al guardar el estado del monitor de leaderboard: ${error.message}`);
+  return data || [];
+}

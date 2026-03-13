@@ -110,6 +110,13 @@ try {
   assert.equal(telegramStatus.response.status, 200);
   assert.equal(telegramStatus.data.hasWebhookSecret, true);
 
+  const unauthorizedImprovementCheck = await fetchJson(`${baseUrl}/api/admin/telegram/check-improvements`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ notify: false })
+  });
+  assert.equal(unauthorizedImprovementCheck.response.status, 401);
+
   const invalidWebhook = await fetchJson(`${baseUrl}/api/telegram/webhook/bad-secret`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

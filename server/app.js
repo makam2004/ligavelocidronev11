@@ -13,7 +13,7 @@ import {
 } from './services/database.js';
 import { getLeagueLeaderboard, validateTrackInput } from './services/league.js';
 import { getAnnualRankingFromDatabase, getWeeklyRankingPreview, storeCurrentWeekScores } from './services/rankings.js';
-import { getTelegramStatus, handleTelegramUpdate, registerTelegramWebhook, sendTopMessageToChats } from './services/telegram.js';
+import { checkLeaderboardImprovements, getTelegramStatus, handleTelegramUpdate, registerTelegramWebhook, sendTopMessageToChats } from './services/telegram.js';
 import { validatePilotRegistrationInput, validatePilotStatusInput } from './services/pilots.js';
 import { asyncHandler } from './utils/http.js';
 
@@ -141,6 +141,13 @@ export function createApp() {
   app.post('/api/admin/telegram/send-top', requireAdmin, asyncHandler(async (req, res) => {
     const chatIds = Array.isArray(req.body?.chat_ids) ? req.body.chat_ids : undefined;
     const result = await sendTopMessageToChats(chatIds);
+    res.json({ ok: true, ...result });
+  }));
+
+  app.post('/api/admin/telegram/check-improvements', requireAdmin, asyncHandler(async (req, res) => {
+    const chatIds = Array.isArray(req.body?.chat_ids) ? req.body.chat_ids : undefined;
+    const notify = req.body?.notify !== false;
+    const result = await checkLeaderboardImprovements({ chatIds, notify });
     res.json({ ok: true, ...result });
   }));
 
