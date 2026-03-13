@@ -6,6 +6,7 @@ import { createHttpError } from '../utils/http.js';
 import { normalizeText, parseLapCount } from '../utils/normalize.js';
 import { getAnnualRankingFromDatabase } from './rankings.js';
 import { SPAIN_TIMEZONE, formatSpainDateTime, formatSpainDateTimeFromIso, toSpainOffsetIso } from '../utils/date.js';
+import { buildTrackPodiumImage } from './podiumImage.js';
 
 let topAutopostTimer = null;
 let topAutopostState = {
@@ -241,6 +242,37 @@ export async function callTelegram(method, payload) {
   return data;
 }
 
+
+export async function sendTelegramPhoto(chatId, photoBuffer, options = {}) {
+  const form = new FormData();
+  form.append('chat_id', String(chatId));
+  form.append('photo', new Blob([photoBuffer], { type: 'image/jpeg' }), options.filename || 'podium.jpg');
+
+  if (options.caption) {
+    form.append('caption', options.caption);
+  }
+  if (options.parseMode) {
+    form.append('parse_mode', options.parseMode);
+  }
+
+  const threadId = normalizeThreadId(options.messageThreadId);
+  if (threadId) {
+    form.append('message_thread_id', String(threadId));
+  }
+
+  const response = await fetch(telegramApiUrl('sendPhoto'), {
+    method: 'POST',
+    body: form
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.ok === false) {
+    throw createHttpError(502, 'Telegram API devolvió un error al enviar la imagen.', data);
+  }
+
+  return data;
+}
+
 export async function sendTelegramMessage(chatId, text, options = {}) {
   const payload = {
     chat_id: chatId,
@@ -331,6 +363,50 @@ export async function buildTelegramSupertopMessage({ seasonYear } = {}) {
 }
 
 
+async function buildWeeklyPodiumPayloads() {
+  const tracks = await listTracks({ activeOnly: true });
+  if (!tracks.length) {
+    return [];
+  }
+
+  const orderedTracks = [...tracks].sort((left, right) => Number(left.laps) - Number(right.laps) || String(left.name).localeCompare(String(right.name)));
+  const payloads = [];
+
+  for (const [index, track] of orderedTracks.entries()) {
+    const leaderboard = await getLeagueLeaderboard({
+      query: track.is_official
+        ? { track_id: track.track_id, laps: track.laps }
+        : { online_id: track.online_id, laps: track.laps }
+    });
+
+    const results = leaderboard.results || [];
+    const firstPilot = results[0]?.playername || 'Sin piloto';
+    const secondPilot = results[1]?.playername || 'Sin piloto';
+    const thirdPilot = results[2]?.playername || 'Sin piloto';
+    const trackLabel = `Track ${index + 1}`;
+    const trackTitle = `${trackLabel}: ${track.name || leaderboard.track?.name || 'Track semanal'}`;
+
+    const photoBuffer = await buildTrackPodiumImage({
+      trackName: trackTitle,
+      firstPilot,
+      secondPilot,
+      thirdPilot
+    });
+
+    payloads.push({
+      trackLabel,
+      trackName: track.name || leaderboard.track?.name || 'Track semanal',
+      firstPilot,
+      secondPilot,
+      thirdPilot,
+      photoBuffer,
+      filename: `${normalizeText(trackTitle) || `track-${index + 1}`}-podium.jpg`
+    });
+  }
+
+  return payloads;
+}
+
 export async function sendTopMessageToChats(chatIds = getBroadcastChatIds()) {
   const targets = Array.from(new Set((chatIds || []).map(String).filter(Boolean)));
   if (!targets.length) {
@@ -343,13 +419,43 @@ export async function sendTopMessageToChats(chatIds = getBroadcastChatIds()) {
   const messageThreadId = getTopThreadId();
   for (const chatId of targets) {
     await sendTelegramMessage(chatId, text, { messageThreadId, parseMode: 'HTML' });
-    deliveries.push({ chatId, messageThreadId, ok: true });
+    deliveries.push({ chatId, messageThreadId, ok: true, kind: 'text' });
   }
 
   return {
-    chatCount: deliveries.length,
+    chatCount: targets.length,
     deliveries,
     text
+  };
+}
+
+export async function sendWeeklyTopAndPodiumsToChats(chatIds = getBroadcastChatIds()) {
+  const targets = Array.from(new Set((chatIds || []).map(String).filter(Boolean)));
+  if (!targets.length) {
+    throw createHttpError(400, 'No hay chats configurados para enviar el resumen semanal. Revisa TELEGRAM_ALLOWED_CHAT_IDS.');
+  }
+
+  const topResult = await sendTopMessageToChats(targets);
+  const podiums = await buildWeeklyPodiumPayloads();
+  const deliveries = [...topResult.deliveries];
+  const messageThreadId = getTopThreadId();
+
+  for (const chatId of targets) {
+    for (const podium of podiums) {
+      await sendTelegramPhoto(chatId, podium.photoBuffer, {
+        messageThreadId,
+        filename: podium.filename
+      });
+      deliveries.push({ chatId, messageThreadId, ok: true, kind: 'photo', trackLabel: podium.trackLabel });
+    }
+  }
+
+  return {
+    chatCount: targets.length,
+    text: topResult.text,
+    podiumCount: podiums.length,
+    podiums: podiums.map(({ trackLabel, trackName, firstPilot, secondPilot, thirdPilot }) => ({ trackLabel, trackName, firstPilot, secondPilot, thirdPilot })),
+    deliveries
   };
 }
 
