@@ -4,6 +4,7 @@ import { getLeagueLeaderboard } from './league.js';
 import { buildLeaderboardMessage } from '../utils/leaderboard.js';
 import { createHttpError } from '../utils/http.js';
 import { normalizeText, parseLapCount } from '../utils/normalize.js';
+import { getAnnualRankingFromDatabase } from './rankings.js';
 import { SPAIN_TIMEZONE, formatSpainDateTime, formatSpainDateTimeFromIso, toSpainOffsetIso } from '../utils/date.js';
 
 let topAutopostTimer = null;
@@ -81,6 +82,10 @@ function getTopThreadId() {
   return normalizeThreadId(config.telegram.topThreadId);
 }
 
+function getSupertopThreadId() {
+  return normalizeThreadId(config.telegram.supertopThreadId);
+}
+
 function getTracksThreadId() {
   return normalizeThreadId(config.telegram.tracksThreadId);
 }
@@ -89,6 +94,7 @@ function getThreadSummary() {
   return {
     top: getTopThreadId(),
     improvements: getTopThreadId(),
+    supertop: getSupertopThreadId(),
     tracks: getTracksThreadId()
   };
 }
@@ -261,21 +267,57 @@ function buildTracksMessage(tracks) {
 
   const orderedTracks = [...tracks].sort((left, right) => Number(left.laps) - Number(right.laps) || String(left.name).localeCompare(String(right.name)));
   return [
-    '🎯 Tracks semanales',
+    '🏁 TRACKS SEMANALES',
     '',
     ...orderedTracks.flatMap((track, index) => {
-      const ref = track.is_official ? `track_id ${track.track_id}` : `online_id ${track.online_id}`;
-      return [
-        `Track ${index + 1}`,
-        `• Nombre: ${track.name}`,
-        `• Escenario: ${track.scenery_name || 'No configurado'}`,
-        `• Vueltas: ${track.laps}`,
-        `• Referencia: ${ref}`,
-        ''
+      const lines = [
+        `${index === 0 ? '🔵' : '🟣'} Track ${index + 1}`,
+        `🧩 Nombre: ${track.name || 'No configurado'}`,
+        `⏱️ Vueltas: ${track.laps}`
       ];
+
+      if (track.is_official && track.track_id) {
+        lines.push(`🆔 ID oficial: ${track.track_id}`);
+      }
+
+      lines.push('', '────────────────');
+      return lines;
     })
-  ].join('\n').trim();
+  ].join('\n').replace(/\n────────────────$/, '').trim();
 }
+
+
+function buildAnnualRankingMessage(annual) {
+  const results = annual?.results || [];
+  const seasonYear = annual?.season_year || new Date().getFullYear();
+
+  if (!results.length) {
+    return [
+      `🏆 RANKING ANUAL ${seasonYear}`,
+      '',
+      'Todavía no hay puntos acumulados en la base de datos.'
+    ].join('\n');
+  }
+
+  const topRows = results.slice(0, 20).map((row) => {
+    const medal = rankEmoji(row.position);
+    const name = row.pilot_name || 'Sin nombre';
+    const points = Number(row.total_points) || 0;
+    return `${medal} ${row.position}. ${name} — ${points} pt${points === 1 ? '' : 's'}`;
+  });
+
+  return [
+    `🏆 RANKING ANUAL ${seasonYear}`,
+    '',
+    ...topRows
+  ].join('\n');
+}
+
+export async function buildTelegramSupertopMessage({ seasonYear } = {}) {
+  const annual = await getAnnualRankingFromDatabase({ seasonYear });
+  return buildAnnualRankingMessage(annual);
+}
+
 
 export async function sendTopMessageToChats(chatIds = getBroadcastChatIds()) {
   const targets = Array.from(new Set((chatIds || []).map(String).filter(Boolean)));
@@ -583,6 +625,15 @@ export async function handleTelegramUpdate(update) {
     return { handled: true, command, tracks: tracks.length, messageThreadId };
   }
 
+  if (command === '/supertop') {
+    const seasonYearArg = Number(args[0]);
+    const seasonYear = Number.isInteger(seasonYearArg) && seasonYearArg > 0 ? seasonYearArg : undefined;
+    const text = await buildTelegramSupertopMessage({ seasonYear });
+    const messageThreadId = getSupertopThreadId();
+    await sendTelegramMessage(message.chat.id, text, { messageThreadId });
+    return { handled: true, command, seasonYear: seasonYear || null, messageThreadId };
+  }
+
   if (command === '/top') {
     const text = await buildTelegramTopMessage();
     const messageThreadId = getTopThreadId();
@@ -601,7 +652,7 @@ export async function handleTelegramUpdate(update) {
 
   await sendTelegramMessage(
     message.chat.id,
-    'Comandos disponibles:\n/ping\n/tracks\n/top\n/leaderboard 1\n/leaderboard 3\n/lb 1\n/lb 3',
+    'Comandos disponibles:\n/ping\n/tracks\n/top\n/supertop\n/leaderboard 1\n/leaderboard 3\n/lb 1\n/lb 3',
     { messageThreadId: message.message_thread_id }
   );
   return { handled: true, command: '/help' };

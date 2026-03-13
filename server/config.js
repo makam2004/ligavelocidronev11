@@ -54,6 +54,7 @@ export const config = {
     improvementIntervalMinutes: asNumber(process.env.TELEGRAM_IMPROVEMENT_INTERVAL_MINUTES, 15),
     improvementMonitorOnBoot: asBoolean(process.env.TELEGRAM_IMPROVEMENT_MONITOR_ON_BOOT, false),
     topThreadId: asNullableNumber(process.env.TELEGRAM_TOPIC_TOP_THREAD_ID, 2),
+    supertopThreadId: asNullableNumber(process.env.TELEGRAM_TOPIC_SUPERTOP_THREAD_ID, 3),
     tracksThreadId: asNullableNumber(process.env.TELEGRAM_TOPIC_TRACKS_THREAD_ID, 4)
   }
 };
@@ -79,6 +80,7 @@ export function getConfigSummary() {
       telegramImprovementIntervalMinutes: config.telegram.improvementIntervalMinutes,
       telegramImprovementMonitorOnBoot: config.telegram.improvementMonitorOnBoot,
       telegramTopThreadId: config.telegram.topThreadId,
+      telegramSupertopThreadId: config.telegram.supertopThreadId,
       telegramTracksThreadId: config.telegram.tracksThreadId,
       timezone: config.timezone
     }

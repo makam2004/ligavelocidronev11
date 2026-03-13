@@ -1,4 +1,4 @@
-# Liga Velocidrone · versión con Telegram /top y monitor de mejoras
+# Liga Velocidrone · versión con Telegram /top, /tracks, /supertop y monitor de mejoras
 
 Esta versión mantiene todo lo que ya te funcionaba y añade una capa nueva para Telegram:
 
@@ -20,7 +20,7 @@ server/
     database.js               # Supabase: pilotos, tracks, weekly_points y monitor state
     league.js                 # lectura de tiempos Velocidrone
     rankings.js               # puntos semanales y ranking anual
-    telegram.js               # webhook, /top y monitores automáticos
+    telegram.js               # webhook, /top, /tracks, /supertop y monitores automáticos
   utils/
     date.js                   # cálculo de semana ISO
     http.js                   # errores HTTP
@@ -190,6 +190,10 @@ Se mantiene igual:
 Puedes enrutar mensajes del bot a temas concretos del grupo configurando:
 
 - `TELEGRAM_TOPIC_TOP_THREAD_ID=2` para `/top` y las mejoras de tiempos
+- `TELEGRAM_TOPIC_SUPERTOP_THREAD_ID=3` para `/supertop`
 - `TELEGRAM_TOPIC_TRACKS_THREAD_ID=4` para `/tracks`
 
 El comando `/tracks` muestra los dos tracks activos con nombre, escenario, vueltas y referencia. El campo de escenario se puede guardar desde `/admin` al crear o actualizar cada track.
+
+
+El comando `/supertop` publica el ranking anual acumulado leyendo los puntos guardados en `weekly_points` de Supabase. También acepta opcionalmente un año, por ejemplo `/supertop 2026`.
