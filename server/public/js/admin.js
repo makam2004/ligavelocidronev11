@@ -23,6 +23,9 @@ function currentWeekInfo(date = new Date()) {
 
 const els = {
   adminKey: document.getElementById('adminKey'),
+  pilotsResult: document.getElementById('pilotsResult'),
+  reloadPilotsList: document.getElementById('reloadPilotsList'),
+  pilotsListBody: document.getElementById('pilotsListBody'),
   trackName: document.getElementById('trackName'),
   laps: document.getElementById('laps'),
   isOfficial: document.getElementById('isOfficial'),
@@ -72,6 +75,54 @@ async function loadHealth() {
     health: health.data,
     telegram: telegram.data
   });
+}
+
+async function loadPilots() {
+  const response = await fetchJson('/api/admin/pilots', {
+    headers: adminHeaders()
+  });
+
+  if (!response.ok) {
+    els.pilotsListBody.innerHTML = `<tr><td colspan="5" class="error">${response.data.error || 'No se pudieron cargar los pilotos.'}</td></tr>`;
+    setResultBox(els.pilotsResult, response.data);
+    return;
+  }
+
+  const pilots = response.data.pilots || [];
+  if (!pilots.length) {
+    els.pilotsListBody.innerHTML = '<tr><td colspan="5" class="muted">No hay pilotos guardados todavía.</td></tr>';
+    return;
+  }
+
+  els.pilotsListBody.innerHTML = pilots.map((pilot) => `
+    <tr>
+      <td data-label="Estado">${pilot.active ? 'Activo' : 'Pendiente / Inactivo'}</td>
+      <td data-label="ID Velocidrone">${pilot.user_id}</td>
+      <td data-label="Nombre">${pilot.name}</td>
+      <td data-label="País">${pilot.country || '-'}</td>
+      <td data-label="Acción">
+        <button
+          class="btn btn-secondary pilot-toggle"
+          type="button"
+          data-pilot-id="${pilot.id}"
+          data-next-active="${pilot.active ? 'false' : 'true'}"
+        >${pilot.active ? 'Desactivar' : 'Activar'}</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function updatePilotStatus(pilotId, active) {
+  const response = await fetchJson(`/api/admin/pilots/${pilotId}/status`, {
+    method: 'PATCH',
+    headers: adminHeaders(),
+    body: JSON.stringify({ active })
+  });
+
+  setResultBox(els.pilotsResult, response.data);
+  if (response.ok) {
+    await loadPilots();
+  }
 }
 
 async function loadTracks() {
@@ -149,6 +200,15 @@ els.awardWeekly.addEventListener('click', awardWeekly);
 els.registerWebhook.addEventListener('click', registerWebhook);
 els.reloadStatus.addEventListener('click', loadHealth);
 els.reloadTracksList.addEventListener('click', loadTracks);
+els.reloadPilotsList.addEventListener('click', loadPilots);
+els.pilotsListBody.addEventListener('click', async (event) => {
+  const button = event.target.closest('.pilot-toggle');
+  if (!button) return;
+
+  const pilotId = button.dataset.pilotId;
+  const nextActive = button.dataset.nextActive === 'true';
+  await updatePilotStatus(pilotId, nextActive);
+});
 
 document.addEventListener('DOMContentLoaded', async () => {
   const weekInfo = currentWeekInfo();
@@ -156,5 +216,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   els.weekKey.value = weekInfo.weekKey;
   toggleTrackFields();
   await loadHealth();
+  await loadPilots();
   await loadTracks();
 });

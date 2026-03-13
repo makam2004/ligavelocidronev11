@@ -101,6 +101,17 @@ h2 {
   margin-top: 18px;
 }
 
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.action-cell {
+  white-space: nowrap;
+}
+
 .tabs {
   display: flex;
   flex-wrap: wrap;

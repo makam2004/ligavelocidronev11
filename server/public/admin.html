@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Panel admin · Liga Velocidrone</title>
+  <title>Admin | Liga Velocidrone</title>
   <link rel="stylesheet" href="/css/style-ui.css" />
 </head>
 <body>
@@ -11,7 +11,7 @@
     <header class="admin-header">
       <div>
         <p class="eyebrow">Panel de administración</p>
-        <h1>Configurar tracks, Telegram y puntuaciones</h1>
+        <h1>Configurar pilotos, tracks, Telegram y puntuaciones</h1>
         <p class="subtitle">Todo lo que cambies aquí se envía al backend protegido con tu <strong>ADMIN_KEY</strong>.</p>
       </div>
       <a class="btn btn-secondary" href="/">Volver a la web</a>
@@ -28,7 +28,30 @@
 
     <section class="main-card section-gap">
       <div class="section-head">
-        <h2>2) Guardar un track</h2>
+        <h2>2) Solicitudes y estado de pilotos</h2>
+        <button id="reloadPilotsList" class="btn btn-secondary" type="button">Recargar pilotos</button>
+      </div>
+      <p class="help">Los pilotos dados de alta desde la web entran pendientes. Aquí puedes activarlos o desactivarlos.</p>
+      <pre id="pilotsResult" class="result-box muted">Sin acciones todavía.</pre>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Estado</th>
+              <th>ID Velocidrone</th>
+              <th>Nombre</th>
+              <th>País</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody id="pilotsListBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="main-card section-gap">
+      <div class="section-head">
+        <h2>3) Guardar un track</h2>
         <button id="saveTrack" class="btn" type="button">Guardar track</button>
       </div>
 
@@ -74,7 +97,7 @@
 
     <section class="main-card section-gap">
       <div class="section-head">
-        <h2>3) Guardar puntuación semanal en Supabase</h2>
+        <h2>4) Guardar puntuación semanal en Supabase</h2>
         <button id="awardWeekly" class="btn" type="button">Guardar semana</button>
       </div>
       <div class="grid-2">
@@ -93,7 +116,7 @@
 
     <section class="main-card section-gap">
       <div class="section-head">
-        <h2>4) Telegram</h2>
+        <h2>5) Telegram</h2>
         <button id="registerWebhook" class="btn btn-secondary" type="button">Registrar webhook</button>
       </div>
       <p class="help">Esto llamará a Telegram para enlazar el bot con <code>/api/telegram/webhook/&lt;secret&gt;</code>.</p>
@@ -102,7 +125,7 @@
 
     <section class="main-card section-gap">
       <div class="section-head">
-        <h2>5) Estado del sistema</h2>
+        <h2>6) Estado del sistema</h2>
         <button id="reloadStatus" class="btn btn-secondary" type="button">Recargar estado</button>
       </div>
       <pre id="healthBox" class="result-box muted">Cargando estado…</pre>
@@ -110,7 +133,7 @@
 
     <section class="main-card section-gap">
       <div class="section-head">
-        <h2>6) Tracks guardados</h2>
+        <h2>7) Tracks guardados</h2>
         <button id="reloadTracksList" class="btn btn-secondary" type="button">Recargar tracks</button>
       </div>
       <div class="table-wrap">

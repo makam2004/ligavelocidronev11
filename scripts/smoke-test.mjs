@@ -56,13 +56,31 @@ try {
   assert.equal(home.status, 200);
   const homeHtml = await home.text();
   assert.match(homeHtml, /Liga Velocidrone/i);
-  assert.match(homeHtml, /Ranking semanal/i);
-  assert.match(homeHtml, /Ranking anual/i);
+  assert.match(homeHtml, /Alta de nuevo piloto/i);
+  assert.doesNotMatch(homeHtml, /Panel admin/i);
+
+  const signupPage = await fetch(`${baseUrl}/alta-piloto`);
+  assert.equal(signupPage.status, 200);
+  const signupHtml = await signupPage.text();
+  assert.match(signupHtml, /Alta de nuevo piloto/i);
 
   const adminPage = await fetch(`${baseUrl}/admin`);
   assert.equal(adminPage.status, 200);
   const adminHtml = await adminPage.text();
   assert.match(adminHtml, /Panel de administración/i);
+  assert.match(adminHtml, /Solicitudes y estado de pilotos/i);
+
+  const registrationWithoutSupabase = await fetchJson(`${baseUrl}/api/pilots/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: 1234, name: 'Test Pilot', country: 'España' })
+  });
+  assert.equal(registrationWithoutSupabase.response.status, 503);
+
+  const unauthorizedPilots = await fetchJson(`${baseUrl}/api/admin/pilots`, {
+    headers: { 'x-admin-key': 'wrong-key' }
+  });
+  assert.equal(unauthorizedPilots.response.status, 401);
 
   const unauthorizedSave = await fetchJson(`${baseUrl}/api/admin/tracks/upsert`, {
     method: 'POST',

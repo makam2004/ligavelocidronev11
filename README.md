@@ -1,10 +1,11 @@
 # Liga Velocidrone · versión con ranking semanal y anual
 
-Esta versión deja la app preparada para tres vistas en la web:
+Esta versión deja la app preparada para tres vistas en la web y añade el alta pública de pilotos:
 
 1. **Leaderboard por track**
 2. **Ranking semanal** calculado con los tracks activos
 3. **Ranking anual** leído desde Supabase
+4. **Alta de nuevos pilotos** desde la web pública
 
 ## Estructura principal
 
@@ -27,13 +28,15 @@ server/
     normalize.js             # utilidades de limpieza
   public/
     index.html                # web pública con pestañas
-    admin.html                # panel admin
+    admin.html                # panel admin, solo accesible por /admin
+    pilot-signup.html         # alta pública de pilotos
     css/
       style-ui.css
       style-home.css
     js/
       app.js
       admin.js
+      pilot-signup.js
 supabase/
   schema.sql                  # tablas y policies
   seed.sql                    # datos de ejemplo
@@ -118,3 +121,32 @@ Como ya tienes variables en Render, aquí lo importante es la base de datos:
 ## Nota importante
 
 El ranking anual **no se inventa en memoria**: sale de Supabase. Si cambias los tiempos de una semana y vuelves a pulsar **Guardar semana** con la misma `week_key`, esa semana se recalcula y se reemplaza.
+
+## Alta de nuevos pilotos
+
+En la web pública aparece un botón **Alta de nuevo piloto**.
+
+Flujo:
+1. El piloto rellena su `user_id`, nombre y país.
+2. La solicitud se guarda en `pilots` con `active = false`.
+3. En `/admin` puedes revisar la lista y pulsar **Activar** o **Desactivar**.
+
+Esto evita que un piloto pase a competir directamente sin revisión previa.
+
+## Admin oculto en la web pública
+
+El panel ya no aparece enlazado en la página principal.
+
+- **No hay botón visible de admin en la home**
+- El panel sigue existiendo en **`/admin`**
+- La protección real la sigue haciendo `ADMIN_KEY` en las rutas admin
+
+## Endpoints añadidos para pilotos
+
+- `POST /api/pilots/register`
+- `GET /api/admin/pilots`
+- `PATCH /api/admin/pilots/:id/status`
+
+## ¿Hay que cambiar Supabase?
+
+No. Para esta mejora **no necesitas cambiar el esquema**: se reutiliza la tabla `pilots` que ya tenías.

@@ -17,6 +17,7 @@ export async function listPilots({ activeOnly = false } = {}) {
   let query = supabase
     .from('pilots')
     .select('id, user_id, name, country, active, created_at, updated_at')
+    .order('active', { ascending: false })
     .order('name', { ascending: true });
 
   if (activeOnly) {
@@ -30,6 +31,78 @@ export async function listPilots({ activeOnly = false } = {}) {
 
 export async function listActivePilots() {
   return listPilots({ activeOnly: true });
+}
+
+export async function getPilotByUserId(userId) {
+  assertSupabase();
+  const { data, error } = await supabase
+    .from('pilots')
+    .select('id, user_id, name, country, active, created_at, updated_at')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) throw createHttpError(500, `Error al buscar piloto: ${error.message}`);
+  return data || null;
+}
+
+export async function registerPendingPilot(payload) {
+  assertSupabase();
+
+  const existingPilot = await getPilotByUserId(payload.user_id);
+  if (existingPilot?.active) {
+    throw createHttpError(409, 'Ese piloto ya está dado de alta y activo en la liga.');
+  }
+
+  if (existingPilot) {
+    const { data, error } = await supabase
+      .from('pilots')
+      .update({
+        name: payload.name,
+        country: payload.country,
+        active: false
+      })
+      .eq('id', existingPilot.id)
+      .select('id, user_id, name, country, active, created_at, updated_at')
+      .single();
+
+    if (error) throw createHttpError(500, `Error al actualizar la solicitud del piloto: ${error.message}`);
+    return {
+      pilot: data,
+      created: false,
+      updated: true
+    };
+  }
+
+  const { data, error } = await supabase
+    .from('pilots')
+    .insert({
+      user_id: payload.user_id,
+      name: payload.name,
+      country: payload.country,
+      active: false
+    })
+    .select('id, user_id, name, country, active, created_at, updated_at')
+    .single();
+
+  if (error) throw createHttpError(500, `Error al registrar el piloto: ${error.message}`);
+  return {
+    pilot: data,
+    created: true,
+    updated: false
+  };
+}
+
+export async function updatePilotActiveStatus({ id, active }) {
+  assertSupabase();
+  const { data, error } = await supabase
+    .from('pilots')
+    .update({ active })
+    .eq('id', id)
+    .select('id, user_id, name, country, active, created_at, updated_at')
+    .single();
+
+  if (error) throw createHttpError(500, `Error al actualizar el estado del piloto: ${error.message}`);
+  return data;
 }
 
 export async function listTracks({ activeOnly = false } = {}) {
@@ -85,7 +158,6 @@ export async function upsertTrack(payload) {
 export async function bulkUpsertTracks(entries) {
   const results = [];
   for (const entry of entries) {
-    // secuencial para tener mensajes claros en caso de error
     results.push(await upsertTrack(entry));
   }
   return results;

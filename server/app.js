@@ -1,12 +1,20 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { config, getConfigSummary } from './config.js';
+import { getConfigSummary, config } from './config.js';
 import { requireAdmin, isAdminRequest } from './middleware/adminAuth.js';
-import { listActivePilots, listTracks, bulkUpsertTracks } from './services/database.js';
+import {
+  listActivePilots,
+  listPilots,
+  registerPendingPilot,
+  updatePilotActiveStatus,
+  listTracks,
+  bulkUpsertTracks
+} from './services/database.js';
 import { getLeagueLeaderboard, validateTrackInput } from './services/league.js';
 import { getAnnualRankingFromDatabase, getWeeklyRankingPreview, storeCurrentWeekScores } from './services/rankings.js';
 import { getTelegramStatus, handleTelegramUpdate, registerTelegramWebhook } from './services/telegram.js';
+import { validatePilotRegistrationInput, validatePilotStatusInput } from './services/pilots.js';
 import { asyncHandler } from './utils/http.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -31,6 +39,34 @@ export function createApp() {
   app.get('/api/pilots/active', asyncHandler(async (req, res) => {
     const pilots = await listActivePilots();
     res.json({ pilots });
+  }));
+
+  app.post('/api/pilots/register', asyncHandler(async (req, res) => {
+    const pilot = validatePilotRegistrationInput(req.body || {});
+    const result = await registerPendingPilot(pilot);
+
+    res.status(result.created ? 201 : 200).json({
+      ok: true,
+      message: result.created
+        ? 'Solicitud enviada. El piloto queda pendiente de activación en el panel admin.'
+        : 'La solicitud ya existía. Hemos actualizado los datos y sigue pendiente de activación.',
+      ...result
+    });
+  }));
+
+  app.get('/api/admin/pilots', requireAdmin, asyncHandler(async (req, res) => {
+    const pilots = await listPilots({ activeOnly: false });
+    res.json({ pilots });
+  }));
+
+  app.patch('/api/admin/pilots/:id/status', requireAdmin, asyncHandler(async (req, res) => {
+    const { active } = validatePilotStatusInput(req.body || {});
+    const pilot = await updatePilotActiveStatus({ id: req.params.id, active });
+    res.json({
+      ok: true,
+      message: active ? 'Piloto activado correctamente.' : 'Piloto desactivado correctamente.',
+      pilot
+    });
   }));
 
   app.get('/api/tracks', asyncHandler(async (req, res) => {
@@ -110,10 +146,15 @@ export function createApp() {
     res.json({ ok: true, result });
   }));
 
-  app.use(express.static(publicRoot));
   app.get('/admin', (req, res) => {
     res.sendFile(path.join(publicRoot, 'admin.html'));
   });
+
+  app.get('/alta-piloto', (req, res) => {
+    res.sendFile(path.join(publicRoot, 'pilot-signup.html'));
+  });
+
+  app.use(express.static(publicRoot));
 
   app.use('/api', (req, res) => {
     res.status(404).json({ error: 'Ruta API no encontrada.' });
