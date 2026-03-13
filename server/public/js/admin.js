@@ -158,7 +158,7 @@ async function saveTrack() {
     scenery_name: els.trackScenery.value.trim(),
     laps: Number(els.laps.value),
     is_official: els.isOfficial.checked,
-    active: els.trackActive.checked,
+    active: els.trackActive ? els.trackActive.checked : true,
     track_id: els.isOfficial.checked ? Number(els.trackId.value) : null,
     online_id: els.isOfficial.checked ? null : els.onlineId.value.trim()
   };
