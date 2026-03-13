@@ -17,7 +17,7 @@ server/
   middleware/
     adminAuth.js              # protección por ADMIN_KEY
   services/
-    database.js               # Supabase: pilotos, tracks, weekly_points y monitor state
+    database.js               # Supabase: pilotos, tracks, puntos semanales/anuales simplificados y monitor state
     league.js                 # lectura de tiempos Velocidrone
     rankings.js               # puntos semanales y ranking anual
     telegram.js               # webhook, /top, /tracks, /supertop y monitores automáticos
@@ -54,8 +54,14 @@ Pilotos de tu liga.
 ### `tracks`
 Tracks configurados. Lo normal para una semana es tener **2 tracks activos**.
 
-### `weekly_points`
-Guarda los puntos de cada semana para construir el ranking anual.
+### `pilot_week_points`
+Foto semanal agregada por piloto. Una fila por piloto y semana.
+
+### `pilot_season_points`
+Acumulado anual simplificado. Una fila por piloto y temporada.
+
+### `weekly_points` (legacy, ya no se usa)
+Se conserva solo por compatibilidad histórica. El acumulado anual nuevo ya no depende de esta tabla.
 
 ### `leaderboard_monitor_state`
 Nueva tabla.
@@ -114,8 +120,10 @@ Como has añadido una función nueva, **sí tienes que ejecutar otra vez** el es
 2. Ejecuta `supabase/schema.sql`.
 3. No hace falta tocar `seed.sql` salvo que quieras datos de ejemplo.
 
-La parte importante es que se cree la tabla nueva:
+La parte importante es que existan estas tablas:
 - `leaderboard_monitor_state`
+- `pilot_week_points`
+- `pilot_season_points`
 
 ## Qué hace el monitor de mejoras
 
@@ -174,7 +182,7 @@ Se mantiene igual:
 
 Se mantiene igual:
 - el semanal se calcula con los tracks activos,
-- el anual sale de `weekly_points` en Supabase.
+- el anual sale de `pilot_season_points` en Supabase.
 
 
 ## Ajustes del monitor y zona horaria
@@ -193,7 +201,6 @@ Puedes enrutar mensajes del bot a temas concretos del grupo configurando:
 - `TELEGRAM_TOPIC_SUPERTOP_THREAD_ID=3` para `/supertop`
 - `TELEGRAM_TOPIC_TRACKS_THREAD_ID=4` para `/tracks`
 
-El comando `/tracks` muestra los dos tracks activos con nombre, escenario, vueltas y referencia. El campo de escenario se puede guardar desde `/admin` al crear o actualizar cada track.
+El comando `/tracks` muestra los dos tracks activos con un formato más visual.
 
-
-El comando `/supertop` publica el ranking anual acumulado leyendo los puntos guardados en `weekly_points` de Supabase. También acepta opcionalmente un año, por ejemplo `/supertop 2026`.
+El comando `/supertop` publica el ranking anual acumulado leyendo `pilot_season_points` de Supabase. La tabla se reconstruye a partir de `pilot_week_points` cada vez que guardas una semana. También acepta opcionalmente un año, por ejemplo `/supertop 2026`.

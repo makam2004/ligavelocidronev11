@@ -1,4 +1,4 @@
-import { listTracks, listPilots, replaceWeeklyScores, listWeeklyScoresBySeason } from './database.js';
+import { listTracks, listPilots, replacePilotWeekPoints, listPilotWeekPoints, replacePilotSeasonPoints, listPilotSeasonPoints } from './database.js';
 import { getLeagueLeaderboard } from './league.js';
 import { normalizeText, parsePositiveInteger } from '../utils/normalize.js';
 import { createHttpError } from '../utils/http.js';
@@ -42,12 +42,12 @@ function buildPilotLookup(pilots) {
 }
 
 function pickPilotRecord(row, lookup) {
-  const userId = Number(row.user_id);
+  const userId = Number(row.user_id ?? row.pilot_user_id);
   if (Number.isFinite(userId) && userId > 0 && lookup.byUserId.has(userId)) {
     return lookup.byUserId.get(userId);
   }
 
-  const nameKey = normalizeText(row.playername);
+  const nameKey = normalizeText(row.playername ?? row.pilot_name);
   if (nameKey && lookup.byName.has(nameKey)) {
     return lookup.byName.get(nameKey);
   }
@@ -152,6 +152,70 @@ export async function getWeeklyRankingPreview() {
   };
 }
 
+function aggregateSeasonRows(rows = []) {
+  const totals = new Map();
+
+  for (const row of rows) {
+    const current = totals.get(row.pilot_key) || {
+      pilot_key: row.pilot_key,
+      pilot_uuid: row.pilot_uuid || null,
+      pilot_user_id: row.pilot_user_id || null,
+      pilot_name: row.pilot_name,
+      total_points: 0,
+      weeks_played: 0
+    };
+
+    current.pilot_uuid = current.pilot_uuid || row.pilot_uuid || null;
+    current.pilot_user_id = current.pilot_user_id || row.pilot_user_id || null;
+    current.pilot_name = current.pilot_name || row.pilot_name;
+    current.total_points += Number(row.total_points) || 0;
+    current.weeks_played += 1;
+    totals.set(row.pilot_key, current);
+  }
+
+  return Array.from(totals.values())
+    .sort((left, right) => {
+      if (right.total_points !== left.total_points) return right.total_points - left.total_points;
+      return (left.pilot_name || '').localeCompare(right.pilot_name || '', 'es');
+    })
+    .map((row, index) => ({
+      position: index + 1,
+      pilot_key: row.pilot_key,
+      pilot_uuid: row.pilot_uuid,
+      pilot_user_id: row.pilot_user_id,
+      pilot_name: row.pilot_name,
+      total_points: row.total_points,
+      weeks_played: row.weeks_played
+    }));
+}
+
+async function rebuildSeasonPoints({ seasonYear }) {
+  const rows = await listPilotWeekPoints({ seasonYear });
+  const results = aggregateSeasonRows(rows);
+
+  await replacePilotSeasonPoints({
+    seasonYear,
+    entries: results.map((row) => ({
+      season_year: seasonYear,
+      pilot_uuid: row.pilot_uuid,
+      pilot_user_id: row.pilot_user_id,
+      pilot_name: row.pilot_name,
+      pilot_key: row.pilot_key,
+      total_points: row.total_points,
+      weeks_played: row.weeks_played
+    }))
+  });
+
+  return {
+    season_year: seasonYear,
+    results,
+    meta: {
+      stored_rows: rows.length,
+      pilots_ranked: results.length
+    }
+  };
+}
+
 export async function storeCurrentWeekScores({ seasonYear, weekKey } = {}) {
   const weekInfo = getIsoWeekInfo();
   const normalizedSeasonYear = parsePositiveInteger(seasonYear) || weekInfo.seasonYear;
@@ -164,43 +228,26 @@ export async function storeCurrentWeekScores({ seasonYear, weekKey } = {}) {
 
   const pilots = await listPilots({ activeOnly: false });
   const lookup = buildPilotLookup(pilots);
-  const entries = [];
+  const entries = preview.summary.map((row) => {
+    const pilot = pickPilotRecord(row, lookup);
+    return {
+      season_year: normalizedSeasonYear,
+      week_key: normalizedWeekKey,
+      pilot_uuid: pilot?.id || null,
+      pilot_user_id: Number.isFinite(Number(row.user_id)) ? Number(row.user_id) : null,
+      pilot_name: row.pilot_name || pilot?.name || 'Sin nombre',
+      pilot_key: row.pilot_key,
+      total_points: Number(row.total_points) || 0
+    };
+  });
 
-  for (const trackEntry of preview.tracks) {
-    const sourceTrack = trackEntry.track;
-    if (!sourceTrack.id) {
-      throw createHttpError(500, 'El track activo no tiene id de base de datos. Guarda los tracks desde el panel admin.');
-    }
-
-    for (const row of trackEntry.results) {
-      const pilot = pickPilotRecord(row, lookup);
-      entries.push({
-        season_year: normalizedSeasonYear,
-        week_key: normalizedWeekKey,
-        track_uuid: sourceTrack.id,
-        track_name: sourceTrack.name,
-        track_reference: sourceTrack.is_official ? String(sourceTrack.track_id) : String(sourceTrack.online_id),
-        laps: Number(sourceTrack.laps),
-        pilot_uuid: pilot?.id || null,
-        pilot_user_id: Number.isFinite(Number(row.user_id)) ? Number(row.user_id) : null,
-        pilot_name: row.playername || pilot?.name || 'Sin nombre',
-        pilot_key: buildPilotKey(row),
-        position: Number(row.position),
-        points: Number(row.points),
-        lap_time: row.lap_time || null,
-        lap_time_ms: Number.isFinite(Number(row.lap_time_ms)) ? Number(row.lap_time_ms) : null
-      });
-    }
-  }
-
-  await replaceWeeklyScores({
+  await replacePilotWeekPoints({
     seasonYear: normalizedSeasonYear,
     weekKey: normalizedWeekKey,
-    trackUuids: preview.tracks.map((item) => item.track.id),
     entries
   });
 
-  const annual = await getAnnualRankingFromDatabase({ seasonYear: normalizedSeasonYear });
+  const annual = await rebuildSeasonPoints({ seasonYear: normalizedSeasonYear });
 
   return {
     stored_entries: entries.length,
@@ -214,40 +261,16 @@ export async function storeCurrentWeekScores({ seasonYear, weekKey } = {}) {
 export async function getAnnualRankingFromDatabase({ seasonYear } = {}) {
   const weekInfo = getIsoWeekInfo();
   const normalizedSeasonYear = parsePositiveInteger(seasonYear) || weekInfo.seasonYear;
-  const rows = await listWeeklyScoresBySeason({ seasonYear: normalizedSeasonYear });
-  const totals = new Map();
+  const rows = await listPilotSeasonPoints({ seasonYear: normalizedSeasonYear });
 
-  for (const row of rows) {
-    const current = totals.get(row.pilot_key) || {
-      pilot_key: row.pilot_key,
-      pilot_name: row.pilot_name,
-      pilot_user_id: row.pilot_user_id || null,
-      total_points: 0,
-      scored_tracks: 0,
-      weeks: new Set()
-    };
-
-    current.pilot_name = current.pilot_name || row.pilot_name;
-    current.total_points += Number(row.points) || 0;
-    current.scored_tracks += 1;
-    current.weeks.add(row.week_key);
-    totals.set(row.pilot_key, current);
-  }
-
-  const results = Array.from(totals.values())
-    .sort((left, right) => {
-      if (right.total_points !== left.total_points) return right.total_points - left.total_points;
-      return (left.pilot_name || '').localeCompare(right.pilot_name || '', 'es');
-    })
-    .map((row, index) => ({
-      position: index + 1,
-      pilot_key: row.pilot_key,
-      pilot_name: row.pilot_name,
-      pilot_user_id: row.pilot_user_id,
-      total_points: row.total_points,
-      scored_tracks: row.scored_tracks,
-      weeks_played: row.weeks.size
-    }));
+  const results = rows.map((row, index) => ({
+    position: index + 1,
+    pilot_key: row.pilot_key,
+    pilot_name: row.pilot_name,
+    pilot_user_id: row.pilot_user_id,
+    total_points: Number(row.total_points) || 0,
+    weeks_played: Number(row.weeks_played) || 0
+  }));
 
   return {
     season_year: normalizedSeasonYear,

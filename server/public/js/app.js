@@ -205,7 +205,7 @@ function renderWeeklyTrackCards(tracks) {
 
 function renderAnnualRows(results) {
   if (!results.length) {
-    elements.annualBody.innerHTML = '<tr><td colspan="5" class="muted">No hay puntos anuales guardados todavía.</td></tr>';
+    elements.annualBody.innerHTML = '<tr><td colspan="4" class="muted">No hay puntos anuales guardados todavía.</td></tr>';
     return;
   }
 
@@ -214,8 +214,7 @@ function renderAnnualRows(results) {
       <td data-label="#">${row.position}</td>
       <td data-label="Piloto">${row.pilot_name || '-'}</td>
       <td data-label="Total puntos">${row.total_points}</td>
-      <td data-label="Semanas puntuadas">${row.weeks_played}</td>
-      <td data-label="Tracks puntuados">${row.scored_tracks}</td>
+      <td data-label="Semanas puntuadas">${row.weeks_played ?? 0}</td>
     </tr>
   `).join('');
 }

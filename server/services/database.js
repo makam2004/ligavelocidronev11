@@ -170,43 +170,78 @@ export async function bulkUpsertTracks(entries) {
   return results;
 }
 
-export async function replaceWeeklyScores({ seasonYear, weekKey, trackUuids = [], entries = [] }) {
+export async function listPilotWeekPoints({ seasonYear, weekKey = null } = {}) {
+  assertSupabase();
+  let query = supabase
+    .from('pilot_week_points')
+    .select('id, season_year, week_key, pilot_uuid, pilot_user_id, pilot_name, pilot_key, total_points, created_at, updated_at')
+    .eq('season_year', seasonYear)
+    .order('week_key', { ascending: true })
+    .order('total_points', { ascending: false })
+    .order('pilot_name', { ascending: true });
+
+  if (weekKey) {
+    query = query.eq('week_key', weekKey);
+  }
+
+  const { data, error } = await query;
+  if (error) throw createHttpError(500, `Error al leer puntos semanales simplificados: ${error.message}`);
+  return data || [];
+}
+
+export async function replacePilotWeekPoints({ seasonYear, weekKey, entries = [] }) {
   assertSupabase();
 
-  const uniqueTrackUuids = Array.from(new Set(trackUuids.filter(Boolean)));
-  if (uniqueTrackUuids.length) {
-    const { error: deleteError } = await supabase
-      .from('weekly_points')
-      .delete()
-      .eq('season_year', seasonYear)
-      .eq('week_key', weekKey)
-      .in('track_uuid', uniqueTrackUuids);
+  const { error: deleteError } = await supabase
+    .from('pilot_week_points')
+    .delete()
+    .eq('season_year', seasonYear)
+    .eq('week_key', weekKey);
 
-    if (deleteError) throw createHttpError(500, `Error al limpiar puntuaciones semanales: ${deleteError.message}`);
-  }
+  if (deleteError) throw createHttpError(500, `Error al limpiar puntos semanales simplificados: ${deleteError.message}`);
 
   if (!entries.length) return [];
 
   const { data, error } = await supabase
-    .from('weekly_points')
+    .from('pilot_week_points')
     .insert(entries)
-    .select('id, season_year, week_key, track_uuid, pilot_name, pilot_key, points, position');
+    .select('id, season_year, week_key, pilot_uuid, pilot_user_id, pilot_name, pilot_key, total_points');
 
-  if (error) throw createHttpError(500, `Error al guardar puntuaciones semanales: ${error.message}`);
+  if (error) throw createHttpError(500, `Error al guardar puntos semanales simplificados: ${error.message}`);
   return data || [];
 }
 
-export async function listWeeklyScoresBySeason({ seasonYear }) {
+export async function listPilotSeasonPoints({ seasonYear }) {
   assertSupabase();
   const { data, error } = await supabase
-    .from('weekly_points')
-    .select('id, season_year, week_key, track_uuid, track_name, track_reference, laps, pilot_uuid, pilot_user_id, pilot_name, pilot_key, position, points, lap_time, lap_time_ms, created_at')
+    .from('pilot_season_points')
+    .select('id, season_year, pilot_uuid, pilot_user_id, pilot_name, pilot_key, total_points, weeks_played, created_at, updated_at')
     .eq('season_year', seasonYear)
-    .order('week_key', { ascending: true })
-    .order('track_name', { ascending: true })
-    .order('position', { ascending: true });
+    .order('total_points', { ascending: false })
+    .order('pilot_name', { ascending: true });
 
-  if (error) throw createHttpError(500, `Error al leer puntuaciones anuales: ${error.message}`);
+  if (error) throw createHttpError(500, `Error al leer puntos anuales acumulados: ${error.message}`);
+  return data || [];
+}
+
+export async function replacePilotSeasonPoints({ seasonYear, entries = [] }) {
+  assertSupabase();
+
+  const { error: deleteError } = await supabase
+    .from('pilot_season_points')
+    .delete()
+    .eq('season_year', seasonYear);
+
+  if (deleteError) throw createHttpError(500, `Error al limpiar el acumulado anual: ${deleteError.message}`);
+
+  if (!entries.length) return [];
+
+  const { data, error } = await supabase
+    .from('pilot_season_points')
+    .insert(entries)
+    .select('id, season_year, pilot_uuid, pilot_user_id, pilot_name, pilot_key, total_points, weeks_played');
+
+  if (error) throw createHttpError(500, `Error al guardar el acumulado anual: ${error.message}`);
   return data || [];
 }
 
