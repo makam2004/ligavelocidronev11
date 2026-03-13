@@ -13,6 +13,7 @@ import {
 } from './services/database.js';
 import { getLeagueLeaderboard, validateTrackInput } from './services/league.js';
 import { getAnnualRankingFromDatabase, getWeeklyRankingPreview, storeCurrentWeekScores } from './services/rankings.js';
+import { replaceWeeklyTracks } from './services/weekAdmin.js';
 import { checkLeaderboardImprovements, getTelegramStatus, handleTelegramUpdate, registerTelegramWebhook, sendTopMessageToChats } from './services/telegram.js';
 import { validatePilotRegistrationInput, validatePilotStatusInput } from './services/pilots.js';
 import { asyncHandler } from './utils/http.js';
@@ -97,6 +98,18 @@ export function createApp() {
     const sanitizedEntries = entries.map((entry) => validateTrackInput(entry));
     const results = await bulkUpsertTracks(sanitizedEntries);
     res.json({ ok: true, tracks: results });
+  }));
+
+  app.post('/api/admin/week/change-tracks', requireAdmin, asyncHandler(async (req, res) => {
+    const result = await replaceWeeklyTracks({
+      seasonYear: req.body?.season_year,
+      weekKey: req.body?.week_key,
+      entries: req.body?.entries,
+      commitWeek: req.body?.commit_week !== false,
+      clearMonitorState: req.body?.clear_monitor_state !== false
+    });
+
+    res.json(result);
   }));
 
   app.get('/api/rankings/weekly', asyncHandler(async (req, res) => {

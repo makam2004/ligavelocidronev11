@@ -26,6 +26,27 @@ const els = {
   pilotsResult: document.getElementById('pilotsResult'),
   reloadPilotsList: document.getElementById('reloadPilotsList'),
   pilotsListBody: document.getElementById('pilotsListBody'),
+
+  weekTrack1Name: document.getElementById('weekTrack1Name'),
+  weekTrack1Scenery: document.getElementById('weekTrack1Scenery'),
+  weekTrack1Laps: document.getElementById('weekTrack1Laps'),
+  weekTrack1Official: document.getElementById('weekTrack1Official'),
+  weekTrack1Id: document.getElementById('weekTrack1Id'),
+  weekTrack1OnlineId: document.getElementById('weekTrack1OnlineId'),
+  weekTrack1OfficialFields: document.getElementById('weekTrack1OfficialFields'),
+  weekTrack1UnofficialFields: document.getElementById('weekTrack1UnofficialFields'),
+
+  weekTrack2Name: document.getElementById('weekTrack2Name'),
+  weekTrack2Scenery: document.getElementById('weekTrack2Scenery'),
+  weekTrack2Laps: document.getElementById('weekTrack2Laps'),
+  weekTrack2Official: document.getElementById('weekTrack2Official'),
+  weekTrack2Id: document.getElementById('weekTrack2Id'),
+  weekTrack2OnlineId: document.getElementById('weekTrack2OnlineId'),
+  weekTrack2OfficialFields: document.getElementById('weekTrack2OfficialFields'),
+  weekTrack2UnofficialFields: document.getElementById('weekTrack2UnofficialFields'),
+  changeWeeklyTracks: document.getElementById('changeWeeklyTracks'),
+  weeklyChangeResult: document.getElementById('weeklyChangeResult'),
+
   trackName: document.getElementById('trackName'),
   trackScenery: document.getElementById('trackScenery'),
   laps: document.getElementById('laps'),
@@ -37,10 +58,12 @@ const els = {
   unofficialFields: document.getElementById('unofficialFields'),
   saveTrack: document.getElementById('saveTrack'),
   saveResult: document.getElementById('saveResult'),
+
   seasonYear: document.getElementById('seasonYear'),
   weekKey: document.getElementById('weekKey'),
   awardWeekly: document.getElementById('awardWeekly'),
   weeklyResult: document.getElementById('weeklyResult'),
+
   registerWebhook: document.getElementById('registerWebhook'),
   checkImprovements: document.getElementById('checkImprovements'),
   telegramResult: document.getElementById('telegramResult'),
@@ -57,10 +80,16 @@ function adminHeaders() {
   };
 }
 
-function toggleTrackFields() {
+function toggleSingleTrackFields() {
   const official = els.isOfficial.checked;
   els.officialFields.classList.toggle('hidden', !official);
   els.unofficialFields.classList.toggle('hidden', official);
+}
+
+function toggleWeeklyTrackFields(prefix) {
+  const official = els[`${prefix}Official`].checked;
+  els[`${prefix}OfficialFields`].classList.toggle('hidden', !official);
+  els[`${prefix}UnofficialFields`].classList.toggle('hidden', official);
 }
 
 function setResultBox(element, payload) {
@@ -152,6 +181,44 @@ async function loadTracks() {
   `).join('');
 }
 
+function buildTrackPayload(prefix) {
+  const isOfficial = els[`${prefix}Official`].checked;
+  return {
+    name: els[`${prefix}Name`].value.trim(),
+    scenery_name: els[`${prefix}Scenery`].value.trim(),
+    laps: Number(els[`${prefix}Laps`].value),
+    is_official: isOfficial,
+    active: true,
+    track_id: isOfficial ? Number(els[`${prefix}Id`].value) : null,
+    online_id: isOfficial ? null : els[`${prefix}OnlineId`].value.trim()
+  };
+}
+
+async function changeWeeklyTracks() {
+  const payload = {
+    season_year: Number(els.seasonYear.value),
+    week_key: els.weekKey.value.trim(),
+    entries: [
+      buildTrackPayload('weekTrack1'),
+      buildTrackPayload('weekTrack2')
+    ],
+    commit_week: true,
+    clear_monitor_state: true
+  };
+
+  const response = await fetchJson('/api/admin/week/change-tracks', {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(payload)
+  });
+
+  setResultBox(els.weeklyChangeResult, response.data);
+  if (response.ok) {
+    await loadTracks();
+    await loadHealth();
+  }
+}
+
 async function saveTrack() {
   const payload = {
     name: els.trackName.value.trim(),
@@ -198,7 +265,6 @@ async function registerWebhook() {
   setResultBox(els.telegramResult, response.data);
 }
 
-
 async function checkImprovements() {
   const response = await fetchJson('/api/admin/telegram/check-improvements', {
     method: 'POST',
@@ -208,8 +274,10 @@ async function checkImprovements() {
   setResultBox(els.telegramResult, response.data);
 }
 
-
-els.isOfficial.addEventListener('change', toggleTrackFields);
+els.isOfficial.addEventListener('change', toggleSingleTrackFields);
+els.weekTrack1Official.addEventListener('change', () => toggleWeeklyTrackFields('weekTrack1'));
+els.weekTrack2Official.addEventListener('change', () => toggleWeeklyTrackFields('weekTrack2'));
+els.changeWeeklyTracks.addEventListener('click', changeWeeklyTracks);
 els.saveTrack.addEventListener('click', saveTrack);
 els.awardWeekly.addEventListener('click', awardWeekly);
 els.registerWebhook.addEventListener('click', registerWebhook);
@@ -230,7 +298,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const weekInfo = currentWeekInfo();
   els.seasonYear.value = String(weekInfo.seasonYear);
   els.weekKey.value = weekInfo.weekKey;
-  toggleTrackFields();
+  els.weekTrack1Laps.value = '1';
+  els.weekTrack2Laps.value = '3';
+  toggleSingleTrackFields();
+  toggleWeeklyTrackFields('weekTrack1');
+  toggleWeeklyTrackFields('weekTrack2');
   await loadHealth();
   await loadPilots();
   await loadTracks();

@@ -170,6 +170,31 @@ export async function bulkUpsertTracks(entries) {
   return results;
 }
 
+export async function setTracksActiveState(active) {
+  assertSupabase();
+  const { data, error } = await supabase
+    .from('tracks')
+    .update({ active: Boolean(active) })
+    .eq('active', !Boolean(active))
+    .select('id');
+
+  if (error) throw createHttpError(500, `Error al actualizar el estado activo de los tracks: ${error.message}`);
+  return data || [];
+}
+
+export async function clearLeaderboardMonitorState() {
+  assertSupabase();
+
+  const { data, error } = await supabase
+    .from('leaderboard_monitor_state')
+    .delete()
+    .not('id', 'is', null)
+    .select('id');
+
+  if (error) throw createHttpError(500, `Error al vaciar leaderboard_monitor_state: ${error.message}`);
+  return (data || []).length;
+}
+
 export async function listPilotWeekPoints({ seasonYear, weekKey = null } = {}) {
   assertSupabase();
   let query = supabase

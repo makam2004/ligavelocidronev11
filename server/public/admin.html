@@ -51,9 +51,110 @@
 
     <section class="main-card section-gap">
       <div class="section-head">
-        <h2>3) Guardar un track</h2>
-        <button id="saveTrack" class="btn" type="button">Guardar track</button>
+        <h2>3) Cerrar semana y cambiar los 2 tracks</h2>
+        <button id="changeWeeklyTracks" class="btn" type="button">Cerrar semana y activar tracks nuevos</button>
       </div>
+      <p class="help">Este es el flujo recomendado para tu liga. Al pulsar el botón se hará, en este orden: <strong>commit</strong> del ranking semanal actual al anual, desactivación de los tracks activos anteriores, activación de los 2 tracks nuevos y vaciado de <code>leaderboard_monitor_state</code>.</p>
+
+      <div class="grid-2">
+        <label class="field">
+          <span>Año de temporada</span>
+          <input id="seasonYear" type="number" min="2024" step="1" />
+        </label>
+        <label class="field">
+          <span>Clave de semana</span>
+          <input id="weekKey" type="text" placeholder="Ej. 2026-W11" />
+        </label>
+      </div>
+
+      <div class="main-card section-gap">
+        <h3>Track 1</h3>
+        <div class="grid-2">
+          <label class="field">
+            <span>Nombre visible</span>
+            <input id="weekTrack1Name" type="text" placeholder="Ej. Weekly Track 1" />
+          </label>
+          <label class="field">
+            <span>Escenario</span>
+            <input id="weekTrack1Scenery" type="text" placeholder="Ej. Alpine Lake" />
+          </label>
+        </div>
+        <div class="grid-2">
+          <label class="field">
+            <span>Vueltas</span>
+            <select id="weekTrack1Laps">
+              <option value="1">1 lap</option>
+              <option value="3">3 laps</option>
+            </select>
+          </label>
+        </div>
+        <label class="checkbox-row">
+          <input id="weekTrack1Official" type="checkbox" checked />
+          <span>Track oficial</span>
+        </label>
+        <div id="weekTrack1OfficialFields" class="grid-2">
+          <label class="field">
+            <span>track_id</span>
+            <input id="weekTrack1Id" type="number" min="1" placeholder="Ej. 1234" />
+          </label>
+        </div>
+        <div id="weekTrack1UnofficialFields" class="grid-2 hidden">
+          <label class="field">
+            <span>online_id</span>
+            <input id="weekTrack1OnlineId" type="text" placeholder="Ej. my-track-online-id" />
+          </label>
+        </div>
+      </div>
+
+      <div class="main-card section-gap">
+        <h3>Track 2</h3>
+        <div class="grid-2">
+          <label class="field">
+            <span>Nombre visible</span>
+            <input id="weekTrack2Name" type="text" placeholder="Ej. Weekly Track 2" />
+          </label>
+          <label class="field">
+            <span>Escenario</span>
+            <input id="weekTrack2Scenery" type="text" placeholder="Ej. Downtown" />
+          </label>
+        </div>
+        <div class="grid-2">
+          <label class="field">
+            <span>Vueltas</span>
+            <select id="weekTrack2Laps">
+              <option value="1">1 lap</option>
+              <option value="3" selected>3 laps</option>
+            </select>
+          </label>
+        </div>
+        <label class="checkbox-row">
+          <input id="weekTrack2Official" type="checkbox" checked />
+          <span>Track oficial</span>
+        </label>
+        <div id="weekTrack2OfficialFields" class="grid-2">
+          <label class="field">
+            <span>track_id</span>
+            <input id="weekTrack2Id" type="number" min="1" placeholder="Ej. 5678" />
+          </label>
+        </div>
+        <div id="weekTrack2UnofficialFields" class="grid-2 hidden">
+          <label class="field">
+            <span>online_id</span>
+            <input id="weekTrack2OnlineId" type="text" placeholder="Ej. another-track-online-id" />
+          </label>
+        </div>
+      </div>
+
+      <pre id="weeklyChangeResult" class="result-box muted">Sin acciones todavía.</pre>
+    </section>
+
+    <section class="main-card section-gap">
+      <div class="section-head">
+        <h2>4) Herramientas manuales</h2>
+        <button id="saveTrack" class="btn btn-secondary" type="button">Guardar track suelto</button>
+        <button id="awardWeekly" class="btn btn-secondary" type="button">Guardar semana sin cambiar tracks</button>
+      </div>
+      <p class="help">Estas acciones se dejan como soporte manual. Para tu flujo normal semanal usa siempre el bloque anterior.</p>
 
       <div class="grid-2">
         <label class="field">
@@ -101,24 +202,6 @@
       </div>
 
       <pre id="saveResult" class="result-box muted">Sin acciones todavía.</pre>
-    </section>
-
-    <section class="main-card section-gap">
-      <div class="section-head">
-        <h2>4) Guardar puntuación semanal en Supabase</h2>
-        <button id="awardWeekly" class="btn" type="button">Guardar semana</button>
-      </div>
-      <div class="grid-2">
-        <label class="field">
-          <span>Año de temporada</span>
-          <input id="seasonYear" type="number" min="2024" step="1" />
-        </label>
-        <label class="field">
-          <span>Clave de semana</span>
-          <input id="weekKey" type="text" placeholder="Ej. 2026-W11" />
-        </label>
-      </div>
-      <p class="help">Esto lee los tracks activos, calcula el ranking semanal agregado por piloto y lo guarda en <code>pilot_week_points</code>. Después reconstruye el acumulado anual en <code>pilot_season_points</code>.</p>
       <pre id="weeklyResult" class="result-box muted">Sin acciones todavía.</pre>
     </section>
 
