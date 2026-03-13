@@ -5,6 +5,18 @@ import { buildLeaderboardMessage } from '../utils/leaderboard.js';
 import { createHttpError } from '../utils/http.js';
 import { parseLapCount } from '../utils/normalize.js';
 
+let topAutopostTimer = null;
+let topAutopostState = {
+  enabled: false,
+  intervalMs: 0,
+  running: false,
+  targetChats: [],
+  lastRunAt: null,
+  lastRunOk: null,
+  lastError: null,
+  startedAt: null
+};
+
 function telegramApiUrl(method) {
   return `https://api.telegram.org/bot${config.telegram.botToken}/${method}`;
 }
@@ -13,9 +25,14 @@ function isTelegramConfigured() {
   return Boolean(config.telegram.botToken && config.telegram.webhookSecret);
 }
 
+function getBroadcastChatIds() {
+  return config.telegram.allowedChatIds.map(String).filter(Boolean);
+}
+
 function isAllowedChat(chatId) {
-  if (!config.telegram.allowedChatIds.length) return true;
-  return config.telegram.allowedChatIds.includes(String(chatId));
+  const allowed = getBroadcastChatIds();
+  if (!allowed.length) return true;
+  return allowed.includes(String(chatId));
 }
 
 function cleanCommand(text) {
@@ -26,12 +43,60 @@ function cleanCommand(text) {
   };
 }
 
+function rankEmoji(position) {
+  if (position === 1) return '🥇';
+  if (position === 2) return '🥈';
+  if (position === 3) return '🥉';
+  return '🪻';
+}
+
+function stripProtocol(url) {
+  return String(url || '').replace(/^https?:\/\//i, '').replace(/\/$/, '');
+}
+
+function buildTrackSection(track, results) {
+  const lines = [`📍 ${track.name}`, ''];
+
+  if (!results.length) {
+    lines.push('Sin tiempos registrados todavía.');
+    return lines.join('\n');
+  }
+
+  const topRows = results.slice(0, 10).map((row) => `${rankEmoji(row.position)} ${row.playername || 'Sin nombre'} — ${row.lap_time || 'sin tiempo'}`);
+  return lines.concat(topRows).join('\n');
+}
+
+export async function buildTelegramTopMessage() {
+  const tracks = await listTracks({ activeOnly: true });
+  if (!tracks.length) {
+    return 'No hay tracks activos en este momento.';
+  }
+
+  const sections = [];
+  for (const track of tracks) {
+    const leaderboard = await getLeagueLeaderboard({
+      query: track.is_official
+        ? { track_id: track.track_id, laps: track.laps }
+        : { online_id: track.online_id, laps: track.laps }
+    });
+
+    sections.push(buildTrackSection(track, leaderboard.results || []));
+  }
+
+  const footer = config.publicBaseUrl
+    ? `\n\n📊 Consulta los rankings completos en:\n➡️ ${stripProtocol(config.publicBaseUrl)}`
+    : '';
+
+  return sections.join('\n\n') + footer;
+}
+
 export function getTelegramStatus() {
   return {
     configured: isTelegramConfigured(),
     hasBotToken: Boolean(config.telegram.botToken),
     hasWebhookSecret: Boolean(config.telegram.webhookSecret),
-    allowedChats: config.telegram.allowedChatIds
+    allowedChats: getBroadcastChatIds(),
+    topAutopost: { ...topAutopostState }
   };
 }
 
@@ -94,6 +159,91 @@ function buildTracksMessage(tracks) {
   ].join('\n');
 }
 
+export async function sendTopMessageToChats(chatIds = getBroadcastChatIds()) {
+  const targets = Array.from(new Set((chatIds || []).map(String).filter(Boolean)));
+  if (!targets.length) {
+    throw createHttpError(400, 'No hay chats configurados para enviar /top. Revisa TELEGRAM_ALLOWED_CHAT_IDS.');
+  }
+
+  const text = await buildTelegramTopMessage();
+  const deliveries = [];
+
+  for (const chatId of targets) {
+    await sendTelegramMessage(chatId, text);
+    deliveries.push({ chatId, ok: true });
+  }
+
+  return {
+    chatCount: deliveries.length,
+    deliveries,
+    text
+  };
+}
+
+async function runTopAutopostCycle() {
+  if (topAutopostState.running) return;
+  topAutopostState.running = true;
+  topAutopostState.lastRunAt = new Date().toISOString();
+
+  try {
+    const result = await sendTopMessageToChats();
+    topAutopostState.lastRunOk = true;
+    topAutopostState.lastError = null;
+    return result;
+  } catch (error) {
+    topAutopostState.lastRunOk = false;
+    topAutopostState.lastError = error.message || 'Error desconocido enviando /top automático.';
+    console.error('❌ Error en el monitor automático de Telegram /top:', error);
+    return null;
+  } finally {
+    topAutopostState.running = false;
+  }
+}
+
+export function startTelegramTopAutopostMonitor() {
+  if (topAutopostTimer) {
+    return { ...topAutopostState, alreadyStarted: true };
+  }
+
+  const targetChats = getBroadcastChatIds();
+  const intervalMinutes = Math.max(1, Number(config.telegram.topAutopostIntervalMinutes) || 360);
+  const intervalMs = intervalMinutes * 60 * 1000;
+  const enabled = Boolean(config.telegram.topAutopostEnabled && config.telegram.botToken && targetChats.length);
+
+  topAutopostState = {
+    enabled,
+    intervalMs,
+    running: false,
+    targetChats,
+    lastRunAt: null,
+    lastRunOk: null,
+    lastError: enabled ? null : 'Monitor desactivado o sin chats configurados.',
+    startedAt: new Date().toISOString()
+  };
+
+  if (!enabled) {
+    return { ...topAutopostState };
+  }
+
+  topAutopostTimer = setInterval(() => {
+    runTopAutopostCycle().catch((error) => {
+      console.error('❌ Error inesperado en setInterval del monitor /top:', error);
+    });
+  }, intervalMs);
+
+  if (typeof topAutopostTimer.unref === 'function') {
+    topAutopostTimer.unref();
+  }
+
+  if (config.telegram.topAutopostOnBoot) {
+    runTopAutopostCycle().catch((error) => {
+      console.error('❌ Error en el primer envío automático /top:', error);
+    });
+  }
+
+  return { ...topAutopostState };
+}
+
 export async function handleTelegramUpdate(update) {
   const message = update?.message || update?.edited_message;
   if (!message?.text || !message.chat?.id) {
@@ -120,6 +270,12 @@ export async function handleTelegramUpdate(update) {
     return { handled: true, command, tracks: tracks.length };
   }
 
+  if (command === '/top') {
+    const text = await buildTelegramTopMessage();
+    await sendTelegramMessage(message.chat.id, text);
+    return { handled: true, command };
+  }
+
   if (command === '/leaderboard' || command === '/lb') {
     const requestedLaps = parseLapCount(args[0]) || null;
     const leaderboard = await getLeagueLeaderboard({
@@ -131,7 +287,7 @@ export async function handleTelegramUpdate(update) {
 
   await sendTelegramMessage(
     message.chat.id,
-    'Comandos disponibles:\n/ping\n/tracks\n/leaderboard 1\n/leaderboard 3\n/lb 1\n/lb 3'
+    'Comandos disponibles:\n/ping\n/tracks\n/top\n/leaderboard 1\n/leaderboard 3\n/lb 1\n/lb 3'
   );
   return { handled: true, command: '/help' };
 }

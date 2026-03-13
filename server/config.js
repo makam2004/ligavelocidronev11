@@ -12,6 +12,14 @@ function asNumber(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function asBoolean(value, fallback = false) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'y', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'n', 'off'].includes(normalized)) return false;
+  return fallback;
+}
+
 export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
   port: asNumber(process.env.PORT, 10000),
@@ -31,7 +39,10 @@ export const config = {
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN || '',
     webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET || '',
-    allowedChatIds: asList(process.env.TELEGRAM_ALLOWED_CHAT_IDS)
+    allowedChatIds: asList(process.env.TELEGRAM_ALLOWED_CHAT_IDS),
+    topAutopostEnabled: asBoolean(process.env.TELEGRAM_TOP_AUTOPOST_ENABLED, true),
+    topAutopostIntervalMinutes: asNumber(process.env.TELEGRAM_TOP_INTERVAL_MINUTES, 360),
+    topAutopostOnBoot: asBoolean(process.env.TELEGRAM_TOP_AUTOPOST_ON_BOOT, false)
   }
 };
 
@@ -48,7 +59,10 @@ export function getConfigSummary() {
       telegramBotToken: Boolean(config.telegram.botToken),
       telegramWebhookSecret: Boolean(config.telegram.webhookSecret),
       allowedOrigins: config.allowedOrigins.length,
-      telegramAllowedChatIds: config.telegram.allowedChatIds.length
+      telegramAllowedChatIds: config.telegram.allowedChatIds.length,
+      telegramTopAutopostEnabled: config.telegram.topAutopostEnabled,
+      telegramTopAutopostIntervalMinutes: config.telegram.topAutopostIntervalMinutes,
+      telegramTopAutopostOnBoot: config.telegram.topAutopostOnBoot
     }
   };
 }

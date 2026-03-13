@@ -20,7 +20,7 @@ server/
     database.js               # Supabase: pilotos, tracks y weekly_points
     league.js                 # lectura de tiempos Velocidrone
     rankings.js               # puntos semanales y ranking anual
-    telegram.js               # webhook de Telegram
+    telegram.js               # webhook, /top y monitor automático de Telegram
   utils/
     date.js                   # cálculo de semana ISO
     http.js                   # errores HTTP
@@ -91,6 +91,9 @@ Cada vez que pulses **Guardar semana** en `/admin`, la app:
 
 ### Opcionales
 - `TELEGRAM_ALLOWED_CHAT_IDS`
+- `TELEGRAM_TOP_AUTOPOST_ENABLED`
+- `TELEGRAM_TOP_INTERVAL_MINUTES`
+- `TELEGRAM_TOP_AUTOPOST_ON_BOOT`
 - `ALLOWED_ORIGINS`
 - `SIM_VERSION`
 - `CACHE_TTL_MS`
@@ -127,9 +130,10 @@ El ranking anual **no se inventa en memoria**: sale de Supabase. Si cambias los 
 En la web pública aparece un botón **Alta de nuevo piloto**.
 
 Flujo:
-1. El piloto rellena su `user_id`, nombre y país.
-2. La solicitud se guarda en `pilots` con `active = false`.
-3. En `/admin` puedes revisar la lista y pulsar **Activar** o **Desactivar**.
+1. El piloto rellena su nombre público de Velocidrone.
+2. El sistema genera un ID interno y guarda la solicitud en `pilots` con `active = false`.
+3. El usuario ve el mensaje **Pendiente de aprobación por el administrador**.
+4. En `/admin` puedes revisar la lista y pulsar **Activar** o **Desactivar**.
 
 Esto evita que un piloto pase a competir directamente sin revisión previa.
 
@@ -159,3 +163,45 @@ No. Para esta mejora **no necesitas cambiar el esquema**: se reutiliza la tabla 
 - La solicitud muestra al usuario el mensaje: `Pendiente de aprobación por el administrador.`
 - El país no se pide en el alta porque con la integración actual no hay una lectura fiable del país de un piloto concreto desde Velocidrone en ese momento.
 - Para que los tiempos se relacionen bien con la liga, el piloto debe escribir exactamente el mismo nombre que usa en Velocidrone.
+
+
+## Telegram: comando /top y monitor automático
+
+Se ha añadido el comando de bot:
+
+- `/top` → envía en Telegram el top actual de los tracks activos
+
+Formato:
+- bloque del **track 1** con ranking actual
+- bloque del **track 2** con ranking actual
+- enlace final a la web
+
+El envío automático usa los chats definidos en `TELEGRAM_ALLOWED_CHAT_IDS`.
+
+### Variables recomendadas para Telegram
+
+- `TELEGRAM_ALLOWED_CHAT_IDS=-1001234567890`
+- `TELEGRAM_TOP_AUTOPOST_ENABLED=true`
+- `TELEGRAM_TOP_INTERVAL_MINUTES=360`
+- `TELEGRAM_TOP_AUTOPOST_ON_BOOT=false`
+
+### Registrar webhook
+
+1. Despliega la app en Render
+2. Entra en `/admin`
+3. Usa tu `ADMIN_KEY`
+4. Llama al endpoint admin para registrar el webhook o usa tu herramienta habitual
+
+Endpoint:
+- `POST /api/admin/telegram/register-webhook`
+
+### Forzar un envío manual del /top
+
+Endpoint admin:
+- `POST /api/admin/telegram/send-top`
+
+Si no mandas `chat_ids`, enviará el mensaje a todos los chats de `TELEGRAM_ALLOWED_CHAT_IDS`.
+
+### Nota operativa
+
+El monitor automático del bot vive dentro del proceso Node de la web. Si el hosting pausa o reinicia el servicio, el contador de 6 horas vuelve a empezar cuando el proceso arranca de nuevo.
