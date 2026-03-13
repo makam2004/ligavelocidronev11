@@ -21,6 +21,7 @@ function asBoolean(value, fallback = false) {
 }
 
 export const config = {
+  timezone: process.env.TZ || 'Europe/Madrid',
   nodeEnv: process.env.NODE_ENV || 'development',
   port: asNumber(process.env.PORT, 10000),
   adminKey: process.env.ADMIN_KEY || '',
@@ -68,7 +69,8 @@ export function getConfigSummary() {
       telegramTopAutopostOnBoot: config.telegram.topAutopostOnBoot,
       telegramImprovementMonitorEnabled: config.telegram.improvementMonitorEnabled,
       telegramImprovementIntervalMinutes: config.telegram.improvementIntervalMinutes,
-      telegramImprovementMonitorOnBoot: config.telegram.improvementMonitorOnBoot
+      telegramImprovementMonitorOnBoot: config.telegram.improvementMonitorOnBoot,
+      timezone: config.timezone
     }
   };
 }

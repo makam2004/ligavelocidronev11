@@ -4,6 +4,7 @@ import { getLeagueLeaderboard } from './league.js';
 import { buildLeaderboardMessage } from '../utils/leaderboard.js';
 import { createHttpError } from '../utils/http.js';
 import { normalizeText, parseLapCount } from '../utils/normalize.js';
+import { SPAIN_TIMEZONE, formatSpainDateTime, formatSpainDateTimeFromIso, toSpainOffsetIso } from '../utils/date.js';
 
 let topAutopostTimer = null;
 let topAutopostState = {
@@ -14,7 +15,8 @@ let topAutopostState = {
   lastRunAt: null,
   lastRunOk: null,
   lastError: null,
-  startedAt: null
+  startedAt: null,
+  nextRunAt: null
 };
 
 let improvementMonitorTimer = null;
@@ -29,7 +31,8 @@ let improvementMonitorState = {
   startedAt: null,
   lastCheckedTracks: 0,
   lastImprovements: 0,
-  bootstrapped: false
+  bootstrapped: false,
+  nextRunAt: null
 };
 
 function telegramApiUrl(method) {
@@ -89,17 +92,6 @@ function buildPilotKey(row) {
   return `name:${normalizeText(row.playername)}`;
 }
 
-function formatSpanishDateTime(date = new Date()) {
-  return new Intl.DateTimeFormat('es-ES', {
-    day: 'numeric',
-    month: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  }).format(date);
-}
 
 function buildImprovementMessage({ trackLabel, track, pilotName, previousTime, newTime, happenedAt = new Date() }) {
   const lines = [
@@ -109,7 +101,7 @@ function buildImprovementMessage({ trackLabel, track, pilotName, previousTime, n
     `👤 Piloto: ${pilotName}`,
     `🔻 Tiempo anterior: ${previousTime}`,
     `✅ Nuevo tiempo: ${newTime}`,
-    `📅 ${formatSpanishDateTime(happenedAt)}`
+    `📅 ${formatSpainDateTime(happenedAt)} (hora peninsular española)`
   ];
 
   return lines.join('\n');
@@ -126,7 +118,21 @@ function createMonitorRow(track, row) {
     pilot_key: buildPilotKey(row),
     best_lap_time: row.lap_time || null,
     best_lap_time_ms: Number(row.lap_time_ms),
-    last_seen_at: new Date().toISOString()
+    last_seen_at: toSpainOffsetIso()
+  };
+}
+
+function calculateNextRunAt(intervalMs) {
+  return intervalMs > 0 ? toSpainOffsetIso(new Date(Date.now() + intervalMs)) : null;
+}
+
+function addHumanTimes(state) {
+  return {
+    ...state,
+    timezone: SPAIN_TIMEZONE,
+    startedAtSpain: formatSpainDateTimeFromIso(state.startedAt),
+    lastRunAtSpain: formatSpainDateTimeFromIso(state.lastRunAt),
+    nextRunAtSpain: formatSpainDateTimeFromIso(state.nextRunAt)
   };
 }
 
@@ -165,11 +171,12 @@ export async function buildTelegramTopMessage() {
 export function getTelegramStatus() {
   return {
     configured: isTelegramConfigured(),
+    timezone: SPAIN_TIMEZONE,
     hasBotToken: Boolean(config.telegram.botToken),
     hasWebhookSecret: Boolean(config.telegram.webhookSecret),
     allowedChats: getBroadcastChatIds(),
-    topAutopost: { ...topAutopostState },
-    improvementMonitor: { ...improvementMonitorState }
+    topAutopost: addHumanTimes(topAutopostState),
+    improvementMonitor: addHumanTimes(improvementMonitorState)
   };
 }
 
@@ -256,7 +263,13 @@ export async function sendTopMessageToChats(chatIds = getBroadcastChatIds()) {
 async function sendMessagesToChats(messages = [], chatIds = getBroadcastChatIds()) {
   const targets = Array.from(new Set((chatIds || []).map(String).filter(Boolean)));
   if (!targets.length) {
-    throw createHttpError(400, 'No hay chats configurados para enviar mensajes del monitor. Revisa TELEGRAM_ALLOWED_CHAT_IDS.');
+    return {
+      chatCount: 0,
+      messageCount: messages.length,
+      deliveries: [],
+      skipped: true,
+      reason: 'No hay chats configurados para notificar mejoras.'
+    };
   }
 
   const deliveries = [];
@@ -277,7 +290,8 @@ async function sendMessagesToChats(messages = [], chatIds = getBroadcastChatIds(
 async function runTopAutopostCycle() {
   if (topAutopostState.running) return;
   topAutopostState.running = true;
-  topAutopostState.lastRunAt = new Date().toISOString();
+  topAutopostState.lastRunAt = toSpainOffsetIso();
+  topAutopostState.nextRunAt = calculateNextRunAt(topAutopostState.intervalMs);
 
   try {
     const result = await sendTopMessageToChats();
@@ -296,7 +310,7 @@ async function runTopAutopostCycle() {
 
 export function startTelegramTopAutopostMonitor() {
   if (topAutopostTimer) {
-    return { ...topAutopostState, alreadyStarted: true };
+    return addHumanTimes({ ...topAutopostState, alreadyStarted: true });
   }
 
   const targetChats = getBroadcastChatIds();
@@ -312,11 +326,12 @@ export function startTelegramTopAutopostMonitor() {
     lastRunAt: null,
     lastRunOk: null,
     lastError: enabled ? null : 'Monitor desactivado o sin chats configurados.',
-    startedAt: new Date().toISOString()
+    startedAt: toSpainOffsetIso(),
+    nextRunAt: enabled ? calculateNextRunAt(intervalMs) : null
   };
 
   if (!enabled) {
-    return { ...topAutopostState };
+    return addHumanTimes(topAutopostState);
   }
 
   topAutopostTimer = setInterval(() => {
@@ -335,7 +350,7 @@ export function startTelegramTopAutopostMonitor() {
     });
   }
 
-  return { ...topAutopostState };
+  return addHumanTimes(topAutopostState);
 }
 
 export async function checkLeaderboardImprovements({ chatIds = getBroadcastChatIds(), notify = true } = {}) {
@@ -346,6 +361,8 @@ export async function checkLeaderboardImprovements({ chatIds = getBroadcastChatI
       improvements: [],
       notifications: null,
       bootstrapped: false,
+      checked_at: toSpainOffsetIso(),
+      checked_at_spain: formatSpainDateTime(),
       message: 'No hay tracks activos para revisar mejoras.'
     };
   }
@@ -415,19 +432,22 @@ export async function checkLeaderboardImprovements({ chatIds = getBroadcastChatI
     improvements,
     notifications,
     bootstrapped: existingRows.length === 0,
+    checked_at: toSpainOffsetIso(),
+    checked_at_spain: formatSpainDateTime(),
     message: improvements.length
       ? `Se han detectado ${improvements.length} mejora(s) de tiempo.`
       : 'No se han detectado mejoras de tiempo en esta comprobación.'
   };
 }
 
-async function runImprovementMonitorCycle() {
+async function runImprovementMonitorCycle({ notify = true } = {}) {
   if (improvementMonitorState.running) return null;
   improvementMonitorState.running = true;
-  improvementMonitorState.lastRunAt = new Date().toISOString();
+  improvementMonitorState.lastRunAt = toSpainOffsetIso();
+  improvementMonitorState.nextRunAt = calculateNextRunAt(improvementMonitorState.intervalMs);
 
   try {
-    const result = await checkLeaderboardImprovements();
+    const result = await checkLeaderboardImprovements({ notify });
     improvementMonitorState.lastRunOk = true;
     improvementMonitorState.lastError = null;
     improvementMonitorState.lastCheckedTracks = result.checked_tracks || 0;
@@ -444,15 +464,19 @@ async function runImprovementMonitorCycle() {
   }
 }
 
+async function runImprovementMonitorBootSync() {
+  return runImprovementMonitorCycle({ notify: config.telegram.improvementMonitorOnBoot });
+}
+
 export function startTelegramImprovementMonitor() {
   if (improvementMonitorTimer) {
-    return { ...improvementMonitorState, alreadyStarted: true };
+    return addHumanTimes({ ...improvementMonitorState, alreadyStarted: true });
   }
 
   const targetChats = getBroadcastChatIds();
   const intervalMinutes = Math.max(1, Number(config.telegram.improvementIntervalMinutes) || 15);
   const intervalMs = intervalMinutes * 60 * 1000;
-  const enabled = Boolean(config.telegram.improvementMonitorEnabled && config.telegram.botToken && targetChats.length);
+  const enabled = Boolean(config.telegram.improvementMonitorEnabled && config.telegram.botToken);
 
   improvementMonitorState = {
     enabled,
@@ -461,15 +485,16 @@ export function startTelegramImprovementMonitor() {
     targetChats,
     lastRunAt: null,
     lastRunOk: null,
-    lastError: enabled ? null : 'Monitor desactivado o sin chats configurados.',
-    startedAt: new Date().toISOString(),
+    lastError: enabled ? (targetChats.length ? null : 'Monitor activo sin chats de notificación configurados. Seguirá guardando estado en base de datos.') : 'Monitor desactivado o sin TELEGRAM_BOT_TOKEN.',
+    startedAt: toSpainOffsetIso(),
+    nextRunAt: enabled ? calculateNextRunAt(intervalMs) : null,
     lastCheckedTracks: 0,
     lastImprovements: 0,
     bootstrapped: false
   };
 
   if (!enabled) {
-    return { ...improvementMonitorState };
+    return addHumanTimes(improvementMonitorState);
   }
 
   improvementMonitorTimer = setInterval(() => {
@@ -482,13 +507,13 @@ export function startTelegramImprovementMonitor() {
     improvementMonitorTimer.unref();
   }
 
-  if (config.telegram.improvementMonitorOnBoot) {
-    runImprovementMonitorCycle().catch((error) => {
-      console.error('❌ Error en la primera comprobación automática de mejoras:', error);
+  setTimeout(() => {
+    runImprovementMonitorBootSync().catch((error) => {
+      console.error('❌ Error en la sincronización inicial automática de mejoras:', error);
     });
-  }
+  }, 20 * 1000);
 
-  return { ...improvementMonitorState };
+  return addHumanTimes(improvementMonitorState);
 }
 
 export async function handleTelegramUpdate(update) {

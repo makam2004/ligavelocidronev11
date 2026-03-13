@@ -51,6 +51,8 @@ try {
   assert.equal(health.response.status, 200);
   assert.equal(health.data.ok, true);
   assert.equal(health.data.configured.adminKey, true);
+  assert.equal(health.data.timezone, 'Europe/Madrid');
+  assert.ok(health.data.now_spain);
 
   const home = await fetch(`${baseUrl}/`);
   assert.equal(home.status, 200);
@@ -109,6 +111,7 @@ try {
   const telegramStatus = await fetchJson(`${baseUrl}/api/telegram/status`);
   assert.equal(telegramStatus.response.status, 200);
   assert.equal(telegramStatus.data.hasWebhookSecret, true);
+  assert.equal(telegramStatus.data.improvementMonitor.enabled, false);
 
   const unauthorizedImprovementCheck = await fetchJson(`${baseUrl}/api/admin/telegram/check-improvements`, {
     method: 'POST',

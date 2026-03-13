@@ -175,3 +175,11 @@ Se mantiene igual:
 Se mantiene igual:
 - el semanal se calcula con los tracks activos,
 - el anual sale de `weekly_points` en Supabase.
+
+
+## Ajustes del monitor y zona horaria
+
+- El monitor de mejoras ahora **sigue comprobando tiempos aunque todavía no hayas configurado `TELEGRAM_ALLOWED_CHAT_IDS`**.
+- Si no hay chats permitidos, actualizará la tabla `leaderboard_monitor_state` pero no intentará enviar avisos.
+- La app genera y muestra sus horas en **Europa/Madrid**.
+- En Render conviene tener también `TZ=Europe/Madrid`.

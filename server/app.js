@@ -16,6 +16,7 @@ import { getAnnualRankingFromDatabase, getWeeklyRankingPreview, storeCurrentWeek
 import { checkLeaderboardImprovements, getTelegramStatus, handleTelegramUpdate, registerTelegramWebhook, sendTopMessageToChats } from './services/telegram.js';
 import { validatePilotRegistrationInput, validatePilotStatusInput } from './services/pilots.js';
 import { asyncHandler } from './utils/http.js';
+import { SPAIN_TIMEZONE, formatSpainDateTime, toSpainOffsetIso } from './utils/date.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,7 +32,9 @@ export function createApp() {
     res.json({
       ok: true,
       service: 'velocidrone-league-app',
-      now: new Date().toISOString(),
+      now: toSpainOffsetIso(),
+      now_spain: formatSpainDateTime(),
+      timezone: SPAIN_TIMEZONE,
       ...getConfigSummary()
     });
   });
