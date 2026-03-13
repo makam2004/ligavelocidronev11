@@ -99,16 +99,29 @@ function getThreadSummary() {
   };
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function buildTrackSection(track, results) {
-  const scenic = track.scenery_name ? ` (${track.scenery_name})` : '';
-  const lines = [`📍 ${track.name}${scenic}`, ''];
+  const trackName = escapeHtml(track.name || 'Track sin nombre');
+  const lines = [`📍 <b>${trackName}</b>`, ''];
 
   if (!results.length) {
     lines.push('Sin tiempos registrados todavía.');
     return lines.join('\n');
   }
 
-  const topRows = results.slice(0, 10).map((row) => `${rankEmoji(row.position)} ${row.playername || 'Sin nombre'} — ${row.lap_time || 'sin tiempo'}`);
+  const topRows = results.slice(0, 10).map((row) => {
+    const pilotName = escapeHtml(row.playername || 'Sin nombre');
+    const lapTime = escapeHtml(row.lap_time || 'sin tiempo');
+    return `${rankEmoji(row.position)} <b>${pilotName}</b> — ${lapTime}`;
+  });
   return lines.concat(topRows).join('\n');
 }
 
@@ -235,6 +248,10 @@ export async function sendTelegramMessage(chatId, text, options = {}) {
     disable_web_page_preview: true
   };
 
+  if (options.parseMode) {
+    payload.parse_mode = options.parseMode;
+  }
+
   const threadId = normalizeThreadId(options.messageThreadId);
   if (threadId) {
     payload.message_thread_id = threadId;
@@ -262,30 +279,25 @@ export async function registerTelegramWebhook() {
 
 function buildTracksMessage(tracks) {
   if (!tracks.length) {
-    return 'No hay tracks activos en este momento.';
+    return '<b>No hay tracks activos en este momento.</b>';
   }
 
   const orderedTracks = [...tracks].sort((left, right) => Number(left.laps) - Number(right.laps) || String(left.name).localeCompare(String(right.name)));
   return [
-    '🏁 TRACKS SEMANALES',
+    '<b>🏁 TRACKS SEMANALES</b>',
     '',
     ...orderedTracks.flatMap((track, index) => {
       const lines = [
-        `${index === 0 ? '🔵' : '🟣'} Track ${index + 1}`,
-        `🧩 Nombre: ${track.name || 'No configurado'}`,
-        `⏱️ Vueltas: ${track.laps}`
+        `<b>${index === 0 ? '🔵' : '🟣'} Track ${index + 1}</b>`,
+        `<b>🧩 Nombre: ${escapeHtml(track.name || 'No configurado')}</b>`,
+        `<b>⏱️ Vueltas: ${escapeHtml(track.laps)}</b>`
       ];
 
-      if (track.is_official && track.track_id) {
-        lines.push(`🆔 ID oficial: ${track.track_id}`);
-      }
-
-      lines.push('', '────────────────');
+      lines.push('', '<b>────────────────</b>');
       return lines;
     })
-  ].join('\n').replace(/\n────────────────$/, '').trim();
+  ].join('\n').replace(/\n<b>────────────────<\/b>$/, '').trim();
 }
-
 
 function buildAnnualRankingMessage(annual) {
   const results = annual?.results || [];
@@ -330,7 +342,7 @@ export async function sendTopMessageToChats(chatIds = getBroadcastChatIds()) {
 
   const messageThreadId = getTopThreadId();
   for (const chatId of targets) {
-    await sendTelegramMessage(chatId, text, { messageThreadId });
+    await sendTelegramMessage(chatId, text, { messageThreadId, parseMode: 'HTML' });
     deliveries.push({ chatId, messageThreadId, ok: true });
   }
 
@@ -357,7 +369,7 @@ async function sendMessagesToChats(messages = [], chatIds = getBroadcastChatIds(
   const messageThreadId = normalizeThreadId(options.messageThreadId);
   for (const chatId of targets) {
     for (const text of messages) {
-      await sendTelegramMessage(chatId, text, { messageThreadId });
+      await sendTelegramMessage(chatId, text, { messageThreadId, parseMode: 'HTML' });
       deliveries.push({ chatId, messageThreadId, ok: true });
     }
   }
@@ -621,7 +633,7 @@ export async function handleTelegramUpdate(update) {
   if (command === '/tracks') {
     const tracks = await listTracks({ activeOnly: true });
     const messageThreadId = getTracksThreadId();
-    await sendTelegramMessage(message.chat.id, buildTracksMessage(tracks), { messageThreadId });
+    await sendTelegramMessage(message.chat.id, buildTracksMessage(tracks), { messageThreadId, parseMode: 'HTML' });
     return { handled: true, command, tracks: tracks.length, messageThreadId };
   }
 
@@ -630,14 +642,14 @@ export async function handleTelegramUpdate(update) {
     const seasonYear = Number.isInteger(seasonYearArg) && seasonYearArg > 0 ? seasonYearArg : undefined;
     const text = await buildTelegramSupertopMessage({ seasonYear });
     const messageThreadId = getSupertopThreadId();
-    await sendTelegramMessage(message.chat.id, text, { messageThreadId });
+    await sendTelegramMessage(message.chat.id, text, { messageThreadId, parseMode: 'HTML' });
     return { handled: true, command, seasonYear: seasonYear || null, messageThreadId };
   }
 
   if (command === '/top') {
     const text = await buildTelegramTopMessage();
     const messageThreadId = getTopThreadId();
-    await sendTelegramMessage(message.chat.id, text, { messageThreadId });
+    await sendTelegramMessage(message.chat.id, text, { messageThreadId, parseMode: 'HTML' });
     return { handled: true, command, messageThreadId };
   }
 
