@@ -27,6 +27,7 @@ const els = {
   reloadPilotsList: document.getElementById('reloadPilotsList'),
   pilotsListBody: document.getElementById('pilotsListBody'),
   trackName: document.getElementById('trackName'),
+  trackScenery: document.getElementById('trackScenery'),
   laps: document.getElementById('laps'),
   isOfficial: document.getElementById('isOfficial'),
   trackId: document.getElementById('trackId'),
@@ -129,13 +130,13 @@ async function updatePilotStatus(pilotId, active) {
 async function loadTracks() {
   const response = await fetchJson('/api/tracks');
   if (!response.ok) {
-    els.tracksListBody.innerHTML = `<tr><td colspan="5" class="error">${response.data.error || 'No se pudieron cargar los tracks.'}</td></tr>`;
+    els.tracksListBody.innerHTML = `<tr><td colspan="6" class="error">${response.data.error || 'No se pudieron cargar los tracks.'}</td></tr>`;
     return;
   }
 
   const tracks = response.data.tracks || [];
   if (!tracks.length) {
-    els.tracksListBody.innerHTML = '<tr><td colspan="5" class="muted">No hay tracks guardados todavía.</td></tr>';
+    els.tracksListBody.innerHTML = '<tr><td colspan="6" class="muted">No hay tracks guardados todavía.</td></tr>';
     return;
   }
 
@@ -143,6 +144,7 @@ async function loadTracks() {
     <tr>
       <td data-label="Nombre">${track.name}</td>
       <td data-label="Tipo">${track.is_official ? 'Oficial' : 'No oficial'}</td>
+      <td data-label="Escenario">${track.scenery_name || '-'}</td>
       <td data-label="Referencia">${track.is_official ? track.track_id : track.online_id}</td>
       <td data-label="Vueltas">${track.laps}</td>
       <td data-label="Activo">${track.active ? 'Sí' : 'No'}</td>
@@ -153,6 +155,7 @@ async function loadTracks() {
 async function saveTrack() {
   const payload = {
     name: els.trackName.value.trim(),
+    scenery_name: els.trackScenery.value.trim(),
     laps: Number(els.laps.value),
     is_official: els.isOfficial.checked,
     active: els.trackActive.checked,

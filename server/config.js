@@ -12,6 +12,12 @@ function asNumber(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function asNullableNumber(value, fallback = null) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 function asBoolean(value, fallback = false) {
   if (value === undefined || value === null || value === '') return fallback;
   const normalized = String(value).trim().toLowerCase();
@@ -46,7 +52,9 @@ export const config = {
     topAutopostOnBoot: asBoolean(process.env.TELEGRAM_TOP_AUTOPOST_ON_BOOT, false),
     improvementMonitorEnabled: asBoolean(process.env.TELEGRAM_IMPROVEMENT_MONITOR_ENABLED, true),
     improvementIntervalMinutes: asNumber(process.env.TELEGRAM_IMPROVEMENT_INTERVAL_MINUTES, 15),
-    improvementMonitorOnBoot: asBoolean(process.env.TELEGRAM_IMPROVEMENT_MONITOR_ON_BOOT, false)
+    improvementMonitorOnBoot: asBoolean(process.env.TELEGRAM_IMPROVEMENT_MONITOR_ON_BOOT, false),
+    topThreadId: asNullableNumber(process.env.TELEGRAM_TOPIC_TOP_THREAD_ID, 2),
+    tracksThreadId: asNullableNumber(process.env.TELEGRAM_TOPIC_TRACKS_THREAD_ID, 4)
   }
 };
 
@@ -70,6 +78,8 @@ export function getConfigSummary() {
       telegramImprovementMonitorEnabled: config.telegram.improvementMonitorEnabled,
       telegramImprovementIntervalMinutes: config.telegram.improvementIntervalMinutes,
       telegramImprovementMonitorOnBoot: config.telegram.improvementMonitorOnBoot,
+      telegramTopThreadId: config.telegram.topThreadId,
+      telegramTracksThreadId: config.telegram.tracksThreadId,
       timezone: config.timezone
     }
   };

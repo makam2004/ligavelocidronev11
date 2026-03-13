@@ -116,7 +116,7 @@ export async function listTracks({ activeOnly = false } = {}) {
   assertSupabase();
   let query = supabase
     .from('tracks')
-    .select('id, name, is_official, track_id, online_id, laps, active, created_at, updated_at')
+    .select('id, name, scenery_name, is_official, track_id, online_id, laps, active, created_at, updated_at')
     .order('active', { ascending: false })
     .order('laps', { ascending: true })
     .order('name', { ascending: true });
@@ -134,7 +134,7 @@ export async function getFirstActiveTrack({ laps = null } = {}) {
   assertSupabase();
   let query = supabase
     .from('tracks')
-    .select('id, name, is_official, track_id, online_id, laps, active, created_at, updated_at')
+    .select('id, name, scenery_name, is_official, track_id, online_id, laps, active, created_at, updated_at')
     .eq('active', true)
     .order('laps', { ascending: true })
     .order('updated_at', { ascending: false })
@@ -156,7 +156,7 @@ export async function upsertTrack(payload) {
   const { data, error } = await supabase
     .from('tracks')
     .upsert(payload, { onConflict: conflictColumns })
-    .select('id, name, is_official, track_id, online_id, laps, active, created_at, updated_at');
+    .select('id, name, scenery_name, is_official, track_id, online_id, laps, active, created_at, updated_at');
 
   if (error) throw createHttpError(500, `Error al guardar track: ${error.message}`);
   return data?.[0] || null;

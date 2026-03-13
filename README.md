@@ -183,3 +183,13 @@ Se mantiene igual:
 - Si no hay chats permitidos, actualizará la tabla `leaderboard_monitor_state` pero no intentará enviar avisos.
 - La app genera y muestra sus horas en **Europa/Madrid**.
 - En Render conviene tener también `TZ=Europe/Madrid`.
+
+
+## Temas de Telegram
+
+Puedes enrutar mensajes del bot a temas concretos del grupo configurando:
+
+- `TELEGRAM_TOPIC_TOP_THREAD_ID=2` para `/top` y las mejoras de tiempos
+- `TELEGRAM_TOPIC_TRACKS_THREAD_ID=4` para `/tracks`
+
+El comando `/tracks` muestra los dos tracks activos con nombre, escenario, vueltas y referencia. El campo de escenario se puede guardar desde `/admin` al crear o actualizar cada track.

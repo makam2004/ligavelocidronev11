@@ -72,8 +72,30 @@ function stripProtocol(url) {
   return String(url || '').replace(/^https?:\/\//i, '').replace(/\/$/, '');
 }
 
+function normalizeThreadId(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function getTopThreadId() {
+  return normalizeThreadId(config.telegram.topThreadId);
+}
+
+function getTracksThreadId() {
+  return normalizeThreadId(config.telegram.tracksThreadId);
+}
+
+function getThreadSummary() {
+  return {
+    top: getTopThreadId(),
+    improvements: getTopThreadId(),
+    tracks: getTracksThreadId()
+  };
+}
+
 function buildTrackSection(track, results) {
-  const lines = [`📍 ${track.name}`, ''];
+  const scenic = track.scenery_name ? ` (${track.scenery_name})` : '';
+  const lines = [`📍 ${track.name}${scenic}`, ''];
 
   if (!results.length) {
     lines.push('Sin tiempos registrados todavía.');
@@ -97,7 +119,7 @@ function buildImprovementMessage({ trackLabel, track, pilotName, previousTime, n
   const lines = [
     '🏁 Liga Semanal Velocidrone',
     `⏱️ Nueva mejora de tiempo en el ${trackLabel}`,
-    `📍 ${track.name}`,
+    `📍 ${track.name}${track.scenery_name ? ` (${track.scenery_name})` : ''}`,
     `👤 Piloto: ${pilotName}`,
     `🔻 Tiempo anterior: ${previousTime}`,
     `✅ Nuevo tiempo: ${newTime}`,
@@ -175,6 +197,7 @@ export function getTelegramStatus() {
     hasBotToken: Boolean(config.telegram.botToken),
     hasWebhookSecret: Boolean(config.telegram.webhookSecret),
     allowedChats: getBroadcastChatIds(),
+    threads: getThreadSummary(),
     topAutopost: addHumanTimes(topAutopostState),
     improvementMonitor: addHumanTimes(improvementMonitorState)
   };
@@ -199,12 +222,19 @@ export async function callTelegram(method, payload) {
   return data;
 }
 
-export async function sendTelegramMessage(chatId, text) {
-  return callTelegram('sendMessage', {
+export async function sendTelegramMessage(chatId, text, options = {}) {
+  const payload = {
     chat_id: chatId,
     text,
     disable_web_page_preview: true
-  });
+  };
+
+  const threadId = normalizeThreadId(options.messageThreadId);
+  if (threadId) {
+    payload.message_thread_id = threadId;
+  }
+
+  return callTelegram('sendMessage', payload);
 }
 
 export async function registerTelegramWebhook() {
@@ -229,14 +259,22 @@ function buildTracksMessage(tracks) {
     return 'No hay tracks activos en este momento.';
   }
 
+  const orderedTracks = [...tracks].sort((left, right) => Number(left.laps) - Number(right.laps) || String(left.name).localeCompare(String(right.name)));
   return [
-    '🎯 Tracks activos',
+    '🎯 Tracks semanales',
     '',
-    ...tracks.map((track) => {
+    ...orderedTracks.flatMap((track, index) => {
       const ref = track.is_official ? `track_id ${track.track_id}` : `online_id ${track.online_id}`;
-      return `• ${track.name} — ${track.laps} lap${track.laps === 3 ? 's' : ''} — ${ref}`;
+      return [
+        `Track ${index + 1}`,
+        `• Nombre: ${track.name}`,
+        `• Escenario: ${track.scenery_name || 'No configurado'}`,
+        `• Vueltas: ${track.laps}`,
+        `• Referencia: ${ref}`,
+        ''
+      ];
     })
-  ].join('\n');
+  ].join('\n').trim();
 }
 
 export async function sendTopMessageToChats(chatIds = getBroadcastChatIds()) {
@@ -248,9 +286,10 @@ export async function sendTopMessageToChats(chatIds = getBroadcastChatIds()) {
   const text = await buildTelegramTopMessage();
   const deliveries = [];
 
+  const messageThreadId = getTopThreadId();
   for (const chatId of targets) {
-    await sendTelegramMessage(chatId, text);
-    deliveries.push({ chatId, ok: true });
+    await sendTelegramMessage(chatId, text, { messageThreadId });
+    deliveries.push({ chatId, messageThreadId, ok: true });
   }
 
   return {
@@ -260,7 +299,7 @@ export async function sendTopMessageToChats(chatIds = getBroadcastChatIds()) {
   };
 }
 
-async function sendMessagesToChats(messages = [], chatIds = getBroadcastChatIds()) {
+async function sendMessagesToChats(messages = [], chatIds = getBroadcastChatIds(), options = {}) {
   const targets = Array.from(new Set((chatIds || []).map(String).filter(Boolean)));
   if (!targets.length) {
     return {
@@ -273,10 +312,11 @@ async function sendMessagesToChats(messages = [], chatIds = getBroadcastChatIds(
   }
 
   const deliveries = [];
+  const messageThreadId = normalizeThreadId(options.messageThreadId);
   for (const chatId of targets) {
     for (const text of messages) {
-      await sendTelegramMessage(chatId, text);
-      deliveries.push({ chatId, ok: true });
+      await sendTelegramMessage(chatId, text, { messageThreadId });
+      deliveries.push({ chatId, messageThreadId, ok: true });
     }
   }
 
@@ -424,7 +464,7 @@ export async function checkLeaderboardImprovements({ chatIds = getBroadcastChatI
 
   let notifications = null;
   if (notify && improvements.length) {
-    notifications = await sendMessagesToChats(improvements.map((item) => item.message), chatIds);
+    notifications = await sendMessagesToChats(improvements.map((item) => item.message), chatIds, { messageThreadId: getTopThreadId() });
   }
 
   return {
@@ -532,20 +572,22 @@ export async function handleTelegramUpdate(update) {
   }
 
   if (command === '/ping') {
-    await sendTelegramMessage(message.chat.id, '✅ Bot activo y escuchando.');
+    await sendTelegramMessage(message.chat.id, '✅ Bot activo y escuchando.', { messageThreadId: message.message_thread_id });
     return { handled: true, command };
   }
 
   if (command === '/tracks') {
     const tracks = await listTracks({ activeOnly: true });
-    await sendTelegramMessage(message.chat.id, buildTracksMessage(tracks));
-    return { handled: true, command, tracks: tracks.length };
+    const messageThreadId = getTracksThreadId();
+    await sendTelegramMessage(message.chat.id, buildTracksMessage(tracks), { messageThreadId });
+    return { handled: true, command, tracks: tracks.length, messageThreadId };
   }
 
   if (command === '/top') {
     const text = await buildTelegramTopMessage();
-    await sendTelegramMessage(message.chat.id, text);
-    return { handled: true, command };
+    const messageThreadId = getTopThreadId();
+    await sendTelegramMessage(message.chat.id, text, { messageThreadId });
+    return { handled: true, command, messageThreadId };
   }
 
   if (command === '/leaderboard' || command === '/lb') {
@@ -553,13 +595,14 @@ export async function handleTelegramUpdate(update) {
     const leaderboard = await getLeagueLeaderboard({
       query: requestedLaps ? { laps: requestedLaps } : {}
     });
-    await sendTelegramMessage(message.chat.id, buildLeaderboardMessage(leaderboard.track, leaderboard.results));
+    await sendTelegramMessage(message.chat.id, buildLeaderboardMessage(leaderboard.track, leaderboard.results), { messageThreadId: message.message_thread_id });
     return { handled: true, command, laps: requestedLaps || leaderboard.track.laps };
   }
 
   await sendTelegramMessage(
     message.chat.id,
-    'Comandos disponibles:\n/ping\n/tracks\n/top\n/leaderboard 1\n/leaderboard 3\n/lb 1\n/lb 3'
+    'Comandos disponibles:\n/ping\n/tracks\n/top\n/leaderboard 1\n/leaderboard 3\n/lb 1\n/lb 3',
+    { messageThreadId: message.message_thread_id }
   );
   return { handled: true, command: '/help' };
 }

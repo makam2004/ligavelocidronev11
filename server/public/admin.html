@@ -61,6 +61,13 @@
           <input id="trackName" type="text" placeholder="Ej. Tuesday League Track" />
         </label>
         <label class="field">
+          <span>Escenario</span>
+          <input id="trackScenery" type="text" placeholder="Ej. Alpine Lake" />
+        </label>
+      </div>
+
+      <div class="grid-2">
+        <label class="field">
           <span>Vueltas</span>
           <select id="laps">
             <option value="1">1 lap</option>
@@ -78,10 +85,6 @@
         <label class="field">
           <span>track_id</span>
           <input id="trackId" type="number" min="1" placeholder="Ej. 1234" />
-        </label>
-        <label class="field inline-field">
-          <span>Activo</span>
-          <input id="trackActive" type="checkbox" checked />
         </label>
       </div>
 
@@ -144,6 +147,7 @@
             <tr>
               <th>Nombre</th>
               <th>Tipo</th>
+              <th>Escenario</th>
               <th>Referencia</th>
               <th>Vueltas</th>
               <th>Activo</th>

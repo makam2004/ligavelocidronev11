@@ -21,6 +21,7 @@ create table if not exists public.pilots (
 create table if not exists public.tracks (
   id uuid primary key default gen_random_uuid(),
   name text not null,
+  scenery_name text,
   is_official boolean not null,
   track_id integer,
   online_id text,
@@ -35,6 +36,8 @@ create table if not exists public.tracks (
   )
 );
 
+alter table if exists public.tracks
+  add column if not exists scenery_name text;
 
 create table if not exists public.leaderboard_monitor_state (
   id uuid primary key default gen_random_uuid(),

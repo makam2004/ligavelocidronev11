@@ -18,6 +18,7 @@ function normalizeTrack(row) {
   return {
     id: row.id || null,
     name: trackLabel(row),
+    scenery_name: row.scenery_name || null,
     is_official: Boolean(row.is_official),
     track_id: row.track_id ? Number(row.track_id) : null,
     online_id: row.online_id || null,
@@ -83,6 +84,7 @@ export function validateTrackInput(input) {
 
     return {
       name: String(input.name || `Track oficial ${trackId}`).trim(),
+      scenery_name: String(input.scenery_name || '').trim() || null,
       is_official: true,
       track_id: trackId,
       online_id: null,
@@ -98,6 +100,7 @@ export function validateTrackInput(input) {
 
   return {
     name: String(input.name || `Track no oficial ${onlineId}`).trim(),
+    scenery_name: String(input.scenery_name || '').trim() || null,
     is_official: false,
     track_id: null,
     online_id: onlineId,
@@ -114,6 +117,7 @@ export async function resolveTrackFromQuery(query = {}) {
   if (trackId && laps) {
     return normalizeTrack({
       name: `Track oficial ${trackId}`,
+      scenery_name: null,
       is_official: true,
       track_id: trackId,
       online_id: null,
@@ -125,6 +129,7 @@ export async function resolveTrackFromQuery(query = {}) {
   if (onlineId && laps) {
     return normalizeTrack({
       name: `Track no oficial ${onlineId}`,
+      scenery_name: null,
       is_official: false,
       track_id: null,
       online_id: onlineId,
