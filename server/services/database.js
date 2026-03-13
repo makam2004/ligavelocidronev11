@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { config } from '../config.js';
 import { createHttpError } from '../utils/http.js';
+import { normalizeText } from '../utils/normalize.js';
 
 export const supabase = config.supabase.url && config.supabase.serviceRole
   ? createClient(config.supabase.url, config.supabase.serviceRole)
@@ -33,22 +34,28 @@ export async function listActivePilots() {
   return listPilots({ activeOnly: true });
 }
 
-export async function getPilotByUserId(userId) {
+function generateInternalPilotUserId() {
+  return Number(`${Date.now()}${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`);
+}
+
+export async function findPilotByExactName(name) {
   assertSupabase();
+  const normalizedName = normalizeText(name);
+  if (!normalizedName) return null;
+
   const { data, error } = await supabase
     .from('pilots')
     .select('id, user_id, name, country, active, created_at, updated_at')
-    .eq('user_id', userId)
-    .maybeSingle();
+    .order('created_at', { ascending: true });
 
-  if (error) throw createHttpError(500, `Error al buscar piloto: ${error.message}`);
-  return data || null;
+  if (error) throw createHttpError(500, `Error al buscar piloto por nombre: ${error.message}`);
+  return (data || []).find((pilot) => normalizeText(pilot.name) === normalizedName) || null;
 }
 
 export async function registerPendingPilot(payload) {
   assertSupabase();
 
-  const existingPilot = await getPilotByUserId(payload.user_id);
+  const existingPilot = await findPilotByExactName(payload.name);
   if (existingPilot?.active) {
     throw createHttpError(409, 'Ese piloto ya está dado de alta y activo en la liga.');
   }
@@ -76,7 +83,7 @@ export async function registerPendingPilot(payload) {
   const { data, error } = await supabase
     .from('pilots')
     .insert({
-      user_id: payload.user_id,
+      user_id: generateInternalPilotUserId(),
       name: payload.name,
       country: payload.country,
       active: false

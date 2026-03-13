@@ -150,3 +150,12 @@ El panel ya no aparece enlazado en la página principal.
 ## ¿Hay que cambiar Supabase?
 
 No. Para esta mejora **no necesitas cambiar el esquema**: se reutiliza la tabla `pilots` que ya tenías.
+
+
+## Cambio reciente: alta pública de pilotos
+
+- El formulario público de alta ya no pide ID manual ni país.
+- El sistema genera automáticamente un ID interno al enviar la solicitud.
+- La solicitud muestra al usuario el mensaje: `Pendiente de aprobación por el administrador.`
+- El país no se pide en el alta porque con la integración actual no hay una lectura fiable del país de un piloto concreto desde Velocidrone en ese momento.
+- Para que los tiempos se relacionen bien con la liga, el piloto debe escribir exactamente el mismo nombre que usa en Velocidrone.

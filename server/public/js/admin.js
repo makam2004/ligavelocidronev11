@@ -97,7 +97,7 @@ async function loadPilots() {
   els.pilotsListBody.innerHTML = pilots.map((pilot) => `
     <tr>
       <td data-label="Estado">${pilot.active ? 'Activo' : 'Pendiente / Inactivo'}</td>
-      <td data-label="ID Velocidrone">${pilot.user_id}</td>
+      <td data-label="ID registrado">${pilot.user_id || '-'}</td>
       <td data-label="Nombre">${pilot.name}</td>
       <td data-label="País">${pilot.country || '-'}</td>
       <td data-label="Acción">

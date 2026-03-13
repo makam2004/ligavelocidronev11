@@ -9,22 +9,19 @@ async function fetchJson(url, options = {}) {
 }
 
 const els = {
-  pilotUserId: document.getElementById('pilotUserId'),
   pilotName: document.getElementById('pilotName'),
-  pilotCountry: document.getElementById('pilotCountry'),
   submitPilot: document.getElementById('submitPilot'),
   pilotSignupResult: document.getElementById('pilotSignupResult')
 };
 
-function setResult(payload) {
-  els.pilotSignupResult.textContent = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
+function setResult(message, tone = 'muted') {
+  els.pilotSignupResult.className = `result-box ${tone}`;
+  els.pilotSignupResult.textContent = message;
 }
 
 async function submitPilot() {
   const payload = {
-    user_id: Number(els.pilotUserId.value),
-    name: els.pilotName.value.trim(),
-    country: els.pilotCountry.value.trim()
+    name: els.pilotName.value.trim()
   };
 
   const response = await fetchJson('/api/pilots/register', {
@@ -33,13 +30,13 @@ async function submitPilot() {
     body: JSON.stringify(payload)
   });
 
-  setResult(response.data);
-
   if (response.ok) {
-    els.pilotUserId.value = '';
+    setResult(response.data.message || 'Pendiente de aprobación por el administrador.', 'success');
     els.pilotName.value = '';
-    els.pilotCountry.value = '';
+    return;
   }
+
+  setResult(response.data.error || 'No se pudo enviar la solicitud.', 'error');
 }
 
 els.submitPilot.addEventListener('click', submitPilot);
