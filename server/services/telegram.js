@@ -136,14 +136,18 @@ function buildPilotKey(row) {
 
 
 function buildImprovementMessage({ trackLabel, track, pilotName, previousTime, newTime, happenedAt = new Date() }) {
+  const trackLine = track?.name
+    ? `${escapeHtml(track.name)}${track?.scenery_name ? ` (${escapeHtml(track.scenery_name)})` : ''}`
+    : escapeHtml(trackLabel || 'Track');
+
   const lines = [
-    '🏁 Liga Semanal Velocidrone',
-    `⏱️ Nueva mejora de tiempo en el ${trackLabel}`,
-    `📍 ${track.name}${track.scenery_name ? ` (${track.scenery_name})` : ''}`,
-    `👤 Piloto: ${pilotName}`,
-    `🔻 Tiempo anterior: ${previousTime}`,
-    `✅ Nuevo tiempo: ${newTime}`,
-    `📅 ${formatSpainDateTime(happenedAt)} (hora peninsular española)`
+    '<b>🏁 Liga Semanal Velocidrone</b>',
+    `<b>⏱️ Nueva mejora de tiempo en el ${escapeHtml(trackLabel)}</b>`,
+    `📍 ${trackLine}`,
+    `<b>👤 Piloto:</b> ${escapeHtml(pilotName)}`,
+    `<b>🔻 Tiempo anterior:</b> ${escapeHtml(previousTime)}`,
+    `<b>✅ Nuevo tiempo:</b> ${escapeHtml(newTime)}`,
+    `📅 ${escapeHtml(formatSpainDateTime(happenedAt))}`
   ];
 
   return lines.join('\n');
@@ -309,6 +313,13 @@ export async function registerTelegramWebhook() {
   };
 }
 
+function getRaceModeLabel(track) {
+  const laps = Number(track?.laps);
+  if (laps === 1) return 'Single Class';
+  if (laps === 3) return 'Three Lap Race';
+  return `${escapeHtml(laps || 'N/D')} Laps`;
+}
+
 function buildTracksMessage(tracks) {
   if (!tracks.length) {
     return '<b>No hay tracks activos en este momento.</b>';
@@ -320,15 +331,18 @@ function buildTracksMessage(tracks) {
     '',
     ...orderedTracks.flatMap((track, index) => {
       const lines = [
-        `<b>${index === 0 ? '🔵' : '🟣'} Track ${index + 1}</b>`,
-        `<b>🧩 Nombre: ${escapeHtml(track.name || 'No configurado')}</b>`,
-        `<b>⏱️ Vueltas: ${escapeHtml(track.laps)}</b>`
+        `<b>Track ${index + 1}</b>`,
+        `<b>Race Mode:</b> ${getRaceModeLabel(track)}`,
+        `<b>${escapeHtml(track.name || 'No configurado')}</b>`,
+        `<b>Escenario:</b> ${escapeHtml(track.scenery_name || 'No configurado')}`
       ];
 
-      lines.push('', '<b>────────────────</b>');
+      if (index < orderedTracks.length - 1) {
+        lines.push('', '<b>────────────────</b>', '');
+      }
       return lines;
     })
-  ].join('\n').replace(/\n<b>────────────────<\/b>$/, '').trim();
+  ].join('\n').trim();
 }
 
 function buildAnnualRankingMessage(annual) {
@@ -337,7 +351,7 @@ function buildAnnualRankingMessage(annual) {
 
   if (!results.length) {
     return [
-      `🏆 RANKING ANUAL ${seasonYear}`,
+      `<b>🏆 RANKING ANUAL ${escapeHtml(seasonYear)}</b>`,
       '',
       'Todavía no hay puntos acumulados en la base de datos.'
     ].join('\n');
@@ -345,13 +359,13 @@ function buildAnnualRankingMessage(annual) {
 
   const topRows = results.slice(0, 20).map((row) => {
     const medal = rankEmoji(row.position);
-    const name = row.pilot_name || 'Sin nombre';
+    const name = escapeHtml(row.pilot_name || 'Sin nombre');
     const points = Number(row.total_points) || 0;
-    return `${medal} ${row.position}. ${name} — ${points} pt${points === 1 ? '' : 's'}`;
+    return `${medal} ${row.position}. <b>${name}</b> — ${points} pt${points === 1 ? '' : 's'}`;
   });
 
   return [
-    `🏆 RANKING ANUAL ${seasonYear}`,
+    `<b>🏆 RANKING ANUAL ${escapeHtml(seasonYear)}</b>`,
     '',
     ...topRows
   ].join('\n');
@@ -384,7 +398,7 @@ async function buildWeeklyPodiumPayloads() {
     const secondPilot = results[1]?.playername || 'Sin piloto';
     const thirdPilot = results[2]?.playername || 'Sin piloto';
     const trackLabel = `Track ${index + 1}`;
-    const trackTitle = `${trackLabel}: ${track.name || leaderboard.track?.name || 'Track semanal'}`;
+    const trackTitle = track.name || leaderboard.track?.name || trackLabel || 'Track semanal';
 
     const photoBuffer = await buildTrackPodiumImage({
       trackName: trackTitle,

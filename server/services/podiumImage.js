@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const templatePath = path.resolve(__dirname, '../public/assets/commit-podium.jpeg');
+const FONT_FAMILY = 'DejaVu Sans';
 
 function escapeXml(value) {
   return String(value ?? '')
@@ -19,92 +20,123 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function normalizeText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function splitLongWord(word, maxChars) {
+  if (word.length <= maxChars) return [word];
+  const parts = [];
+  let remaining = word;
+  while (remaining.length > maxChars) {
+    parts.push(`${remaining.slice(0, Math.max(1, maxChars - 1))}…`);
+    remaining = remaining.slice(Math.max(1, maxChars - 1));
+  }
+  if (remaining) parts.push(remaining);
+  return parts;
+}
+
 function wrapLines(text, maxCharsPerLine = 12, maxLines = 2) {
-  const normalized = String(text || '').trim();
+  const normalized = normalizeText(text);
   if (!normalized) return ['—'];
 
-  const words = normalized.split(/\s+/).filter(Boolean);
+  const sourceWords = normalized.split(' ').flatMap((word) => splitLongWord(word, maxCharsPerLine + 4));
   const lines = [];
   let current = '';
-  let index = 0;
 
-  while (index < words.length && lines.length < maxLines) {
-    const word = words[index];
+  for (const word of sourceWords) {
     const candidate = current ? `${current} ${word}` : word;
-
-    if (candidate.length <= maxCharsPerLine || !current) {
+    if (!current || candidate.length <= maxCharsPerLine) {
       current = candidate;
-      index += 1;
       continue;
     }
-
     lines.push(current);
-    current = '';
+    current = word;
+    if (lines.length === maxLines - 1) {
+      break;
+    }
   }
 
   if (lines.length < maxLines && current) {
     lines.push(current);
   }
 
-  if (index < words.length && lines.length) {
-    const rest = words.slice(index).join(' ');
+  const consumed = lines.join(' ').trim();
+  if (normalized.length > consumed.length && lines.length) {
     const lastIndex = lines.length - 1;
-    const combined = `${lines[lastIndex]} ${rest}`.trim();
-    lines[lastIndex] = combined.length > maxCharsPerLine + 8
-      ? `${combined.slice(0, maxCharsPerLine + 5).trim()}…`
-      : combined;
+    const lastLine = lines[lastIndex];
+    lines[lastIndex] = lastLine.length > maxCharsPerLine - 1
+      ? `${lastLine.slice(0, Math.max(1, maxCharsPerLine - 1)).trim()}…`
+      : `${lastLine}…`;
   }
 
   return lines.slice(0, maxLines);
 }
 
-function computeFontSize(text, maxCharsPerLine, baseSize, minSize) {
-  const maxLength = wrapLines(text, maxCharsPerLine, 2).reduce((acc, line) => Math.max(acc, line.length), 0);
+function computeFontSize(text, maxCharsPerLine, baseSize, minSize, maxLines = 2) {
+  const wrapped = wrapLines(text, maxCharsPerLine, maxLines);
+  const maxLength = wrapped.reduce((acc, line) => Math.max(acc, line.length), 0);
   if (maxLength <= maxCharsPerLine) return baseSize;
   const penalty = (maxLength - maxCharsPerLine) * 2;
   return clamp(baseSize - penalty, minSize, baseSize);
 }
 
+function buildTextLines({ lines, centerX, startY, lineHeight, fontSize, fill, stroke, strokeWidth }) {
+  return lines.map((line, index) => `
+    <text x="${centerX}" y="${startY + index * lineHeight}" text-anchor="middle"
+      font-family="${FONT_FAMILY}" font-size="${fontSize}" font-weight="900"
+      fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" paint-order="stroke fill"
+      dominant-baseline="middle">${escapeXml(line)}</text>`).join('');
+}
+
 function buildNameBlock({ x, y, width, height, text, fill = '#ffffff' }) {
-  const maxCharsPerLine = text.length > 14 ? 11 : 13;
-  const lines = wrapLines(text, maxCharsPerLine, 2);
-  const fontSize = computeFontSize(text, maxCharsPerLine, 52, 30);
-  const lineHeight = Math.round(fontSize * 1.1);
-  const startY = y + (height - (lines.length - 1) * lineHeight) / 2 + fontSize * 0.35;
+  const normalized = normalizeText(text) || '—';
+  const maxCharsPerLine = normalized.length > 16 ? 11 : 13;
+  const lines = wrapLines(normalized, maxCharsPerLine, 2);
+  const fontSize = computeFontSize(normalized, maxCharsPerLine, 52, 28, 2);
+  const lineHeight = Math.round(fontSize * 1.02);
+  const startY = y + height / 2 - ((lines.length - 1) * lineHeight) / 2;
 
   return `
     <g>
       <rect x="${x}" y="${y}" rx="22" ry="22" width="${width}" height="${height}" fill="rgba(20,30,40,0.78)" stroke="rgba(255,255,255,0.95)" stroke-width="4" />
-      ${lines.map((line, index) => `
-        <text x="${x + width / 2}" y="${startY + index * lineHeight}" text-anchor="middle"
-          font-family="Arial, Helvetica, sans-serif" font-size="${fontSize}" font-weight="900"
-          fill="${fill}" stroke="rgba(8,12,18,0.85)" stroke-width="8" paint-order="stroke fill">
-          ${escapeXml(line)}
-        </text>
-      `).join('')}
+      ${buildTextLines({
+        lines,
+        centerX: x + width / 2,
+        startY,
+        lineHeight,
+        fontSize,
+        fill,
+        stroke: 'rgba(8,12,18,0.92)',
+        strokeWidth: 8
+      })}
     </g>`;
 }
 
 function buildTrackTitle({ width, text }) {
-  const lines = wrapLines(text, 26, 2);
-  const fontSize = computeFontSize(text, 26, 62, 34);
-  const lineHeight = Math.round(fontSize * 1.08);
+  const normalized = normalizeText(text) || 'Track semanal';
+  const lines = wrapLines(normalized, 24, 2);
+  const fontSize = computeFontSize(normalized, 24, 58, 28, 2);
+  const lineHeight = Math.round(fontSize * 1.02);
   const boxWidth = width - 96;
   const boxX = 48;
   const boxHeight = 150;
   const boxY = 38;
-  const startY = boxY + (boxHeight - (lines.length - 1) * lineHeight) / 2 + fontSize * 0.35;
+  const startY = boxY + boxHeight / 2 - ((lines.length - 1) * lineHeight) / 2;
 
   return `
     <g>
       <rect x="${boxX}" y="${boxY}" rx="26" ry="26" width="${boxWidth}" height="${boxHeight}" fill="rgba(13,31,46,0.82)" stroke="rgba(255,230,150,0.95)" stroke-width="6" />
-      ${lines.map((line, index) => `
-        <text x="${width / 2}" y="${startY + index * lineHeight}" text-anchor="middle"
-          font-family="Arial, Helvetica, sans-serif" font-size="${fontSize}" font-weight="900"
-          fill="#ffe89a" stroke="rgba(6,12,18,0.88)" stroke-width="10" paint-order="stroke fill">
-          ${escapeXml(line)}
-        </text>
-      `).join('')}
+      ${buildTextLines({
+        lines,
+        centerX: width / 2,
+        startY,
+        lineHeight,
+        fontSize,
+        fill: '#ffe89a',
+        stroke: 'rgba(6,12,18,0.92)',
+        strokeWidth: 10
+      })}
     </g>`;
 }
 
@@ -112,6 +144,9 @@ function buildPodiumOverlay({ width, height, trackName, winners }) {
   const [first, second, third] = winners;
   return `
     <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+      <style>
+        text { font-family: '${FONT_FAMILY}', sans-serif; }
+      </style>
       ${buildTrackTitle({ width, text: trackName })}
       ${buildNameBlock({ x: 74, y: 640, width: 270, height: 124, text: second || '—' })}
       ${buildNameBlock({ x: 352, y: 470, width: 320, height: 132, text: first || '—', fill: '#fff2b8' })}
