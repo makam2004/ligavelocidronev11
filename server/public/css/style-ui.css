@@ -368,3 +368,11 @@ code {
   border-color: rgba(239, 68, 68, 0.35);
   background: rgba(127, 29, 29, 0.35);
 }
+
+.eyebrow-main {
+  font-size: clamp(18px, 2.6vw, 28px);
+  letter-spacing: 0.1em;
+  margin-bottom: 10px;
+  color: #f6c95b;
+  text-shadow: 0 2px 12px rgba(0,0,0,0.45);
+}

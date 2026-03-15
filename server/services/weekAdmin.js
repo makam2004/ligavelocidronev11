@@ -2,7 +2,7 @@ import { bulkUpsertTracks, clearLeaderboardMonitorState, listTracks, setTracksAc
 import { storeCurrentWeekScores } from './rankings.js';
 import { validateTrackInput } from './league.js';
 import { createHttpError } from '../utils/http.js';
-import { sendWeeklyTopAndPodiumsToChats } from './telegram.js';
+import { sendWeeklyTopAndPodiumsToChats, sendSupertopMessageToChats, sendTracksMessageToChats } from './telegram.js';
 
 function sanitizeEntries(entries = []) {
   const normalized = Array.isArray(entries) ? entries.map((entry) => validateTrackInput({ ...entry, active: true })) : [];
@@ -39,6 +39,15 @@ export async function replaceWeeklyTracks({ seasonYear, weekKey, entries = [], c
     details: null
   };
 
+  let postCommitTelegram = {
+    attempted: false,
+    sent: false,
+    skipped: false,
+    reason: null,
+    details: null,
+    error: null
+  };
+
   if (commitWeek) {
     commit.attempted = true;
     if (previousActiveTracks.length) {
@@ -68,12 +77,28 @@ export async function replaceWeeklyTracks({ seasonYear, weekKey, entries = [], c
     clearedMonitorRows = await clearLeaderboardMonitorState();
   }
 
+  if (commit.committed) {
+    postCommitTelegram.attempted = true;
+    try {
+      const supertop = await sendSupertopMessageToChats(undefined, { seasonYear });
+      const tracks = await sendTracksMessageToChats();
+      postCommitTelegram.sent = true;
+      postCommitTelegram.details = { supertop, tracks };
+    } catch (error) {
+      postCommitTelegram.error = error.message || 'No se pudo enviar /supertop y /tracks tras cerrar la semana.';
+    }
+  } else {
+    postCommitTelegram.skipped = true;
+    postCommitTelegram.reason = 'No hubo commit semanal; no se enviaron /supertop ni /tracks.';
+  }
+
   return {
     ok: true,
     message: 'Semana cerrada y tracks semanales actualizados correctamente.',
     previous_active_tracks: previousActiveTracks,
     pre_commit_telegram: preCommitTelegram,
     commit,
+    post_commit_telegram: postCommitTelegram,
     new_active_tracks: savedTracks,
     monitor_state: {
       cleared: Boolean(clearMonitorState),

@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
 import { fileURLToPath } from 'node:url';
@@ -5,7 +6,33 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const templatePath = path.resolve(__dirname, '../public/assets/commit-podium.jpeg');
-const FONT_FAMILY = 'DejaVu Sans';
+const FONT_FAMILY = 'LigaPodium';
+let cachedFontDataUri = null;
+
+function resolveFontDataUri() {
+  if (cachedFontDataUri) return cachedFontDataUri;
+
+  const fontCandidates = [
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+    '/usr/share/fonts/opentype/inter/InterDisplay-Bold.otf',
+    '/usr/share/fonts/truetype/lato/Lato-Black.ttf',
+    '/usr/share/fonts/truetype/lato/Lato-Bold.ttf'
+  ];
+
+  for (const fontPath of fontCandidates) {
+    if (fs.existsSync(fontPath)) {
+      const ext = path.extname(fontPath).toLowerCase();
+      const mime = ext === '.otf' ? 'font/otf' : 'font/ttf';
+      const encoded = fs.readFileSync(fontPath).toString('base64');
+      cachedFontDataUri = `data:${mime};base64,${encoded}`;
+      return cachedFontDataUri;
+    }
+  }
+
+  cachedFontDataUri = '';
+  return cachedFontDataUri;
+}
 
 function escapeXml(value) {
   return String(value ?? '')
@@ -145,7 +172,13 @@ function buildPodiumOverlay({ width, height, trackName, winners }) {
   return `
     <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
       <style>
-        text { font-family: '${FONT_FAMILY}', sans-serif; }
+        @font-face {
+          font-family: '${FONT_FAMILY}';
+          src: url('${resolveFontDataUri()}') format('truetype');
+          font-weight: 400 900;
+          font-style: normal;
+        }
+        text { font-family: '${FONT_FAMILY}', Arial, Helvetica, sans-serif; }
       </style>
       ${buildTrackTitle({ width, text: trackName })}
       ${buildNameBlock({ x: 74, y: 640, width: 270, height: 124, text: second || '—' })}

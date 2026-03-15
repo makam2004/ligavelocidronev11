@@ -331,14 +331,14 @@ function buildTracksMessage(tracks) {
     '',
     ...orderedTracks.flatMap((track, index) => {
       const lines = [
-        `<b>Track ${index + 1}</b>`,
-        `<b>Race Mode:</b> ${getRaceModeLabel(track)}`,
-        `<b>${escapeHtml(track.name || 'No configurado')}</b>`,
-        `<b>Escenario:</b> ${escapeHtml(track.scenery_name || 'No configurado')}`
+        `🏁 <b>Track ${index + 1}</b>`,
+        `🎮 <b>Race Mode:</b> ${getRaceModeLabel(track)}`,
+        `📍 <b>${escapeHtml(track.name || 'No configurado')}</b>`,
+        `🌍 <b>Escenario:</b> ${escapeHtml(track.scenery_name || 'No configurado')}`
       ];
 
       if (index < orderedTracks.length - 1) {
-        lines.push('', '<b>────────────────</b>', '');
+        lines.push('', '━━━━━━━━━━━━━━━━', '');
       }
       return lines;
     })
@@ -374,6 +374,51 @@ function buildAnnualRankingMessage(annual) {
 export async function buildTelegramSupertopMessage({ seasonYear } = {}) {
   const annual = await getAnnualRankingFromDatabase({ seasonYear });
   return buildAnnualRankingMessage(annual);
+}
+
+export async function sendTracksMessageToChats(chatIds = getBroadcastChatIds()) {
+  const targets = Array.from(new Set((chatIds || []).map(String).filter(Boolean)));
+  if (!targets.length) {
+    throw createHttpError(400, 'No hay chats configurados para enviar /tracks. Revisa TELEGRAM_ALLOWED_CHAT_IDS.');
+  }
+
+  const tracks = await listTracks({ activeOnly: true });
+  const text = buildTracksMessage(tracks);
+  const deliveries = [];
+  const messageThreadId = getTracksThreadId();
+
+  for (const chatId of targets) {
+    await sendTelegramMessage(chatId, text, { messageThreadId, parseMode: 'HTML' });
+    deliveries.push({ chatId, messageThreadId, ok: true, kind: 'text' });
+  }
+
+  return {
+    chatCount: targets.length,
+    deliveries,
+    text
+  };
+}
+
+export async function sendSupertopMessageToChats(chatIds = getBroadcastChatIds(), { seasonYear } = {}) {
+  const targets = Array.from(new Set((chatIds || []).map(String).filter(Boolean)));
+  if (!targets.length) {
+    throw createHttpError(400, 'No hay chats configurados para enviar /supertop. Revisa TELEGRAM_ALLOWED_CHAT_IDS.');
+  }
+
+  const text = await buildTelegramSupertopMessage({ seasonYear });
+  const deliveries = [];
+  const messageThreadId = getSupertopThreadId();
+
+  for (const chatId of targets) {
+    await sendTelegramMessage(chatId, text, { messageThreadId, parseMode: 'HTML' });
+    deliveries.push({ chatId, messageThreadId, ok: true, kind: 'text' });
+  }
+
+  return {
+    chatCount: targets.length,
+    deliveries,
+    text
+  };
 }
 
 

@@ -26,6 +26,7 @@ const state = {
 
 const elements = {
   tracks: document.getElementById('tracks'),
+  leagueHeading: document.getElementById('leagueHeading'),
   trackTitle: document.getElementById('trackTitle'),
   trackSubtitle: document.getElementById('trackSubtitle'),
   tableBody: document.getElementById('tableBody'),
@@ -45,16 +46,48 @@ const elements = {
   reloadAnnual: document.getElementById('reloadAnnual')
 };
 
+function getSpainNowParts() {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+
+  const parts = formatter.formatToParts(new Date()).reduce((acc, part) => {
+    if (part.type !== 'literal') acc[part.type] = Number(part.value);
+    return acc;
+  }, {});
+
+  return {
+    year: parts.year,
+    month: parts.month,
+    day: parts.day
+  };
+}
+
+function getIsoWeekInSpain() {
+  const { year, month, day } = getSpainNowParts();
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  return Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+}
+
+function renderLeagueHeading() {
+  if (!elements.leagueHeading) return;
+  elements.leagueHeading.textContent = `LIGA VELOCIDRONE · Semana ${String(getIsoWeekInSpain()).padStart(2, '0')}`;
+}
+
 function trackLabel(track) {
-  return track.name || (track.is_official ? `Track oficial ${track.track_id}` : `Track no oficial ${track.online_id}`);
+  return track.name || 'Track semanal';
 }
 
 function renderPageTitle() {
   if (state.currentView === 'leaderboard' && state.selectedTrack) {
     elements.trackTitle.textContent = trackLabel(state.selectedTrack);
-    elements.trackSubtitle.textContent = state.selectedTrack.is_official
-      ? `Track oficial · track_id ${state.selectedTrack.track_id} · ${state.selectedTrack.laps} lap${state.selectedTrack.laps === 3 ? 's' : ''}`
-      : `Track no oficial · online_id ${state.selectedTrack.online_id} · ${state.selectedTrack.laps} lap${state.selectedTrack.laps === 3 ? 's' : ''}`;
+    elements.trackSubtitle.textContent = `${state.selectedTrack.laps} lap${state.selectedTrack.laps === 3 ? 's' : ''}${state.selectedTrack.scenery_name ? ` · ${state.selectedTrack.scenery_name}` : ''}`;
     return;
   }
 
@@ -173,7 +206,7 @@ function renderWeeklyTrackCards(tracks) {
       <div class="sub-card-head">
         <div>
           <h3>${trackLabel(entry.track)}</h3>
-          <p class="muted">${entry.track.is_official ? `Oficial · track_id ${entry.track.track_id}` : `No oficial · online_id ${entry.track.online_id}`} · ${entry.track.laps} lap${entry.track.laps === 3 ? 's' : ''}</p>
+          <p class="muted">${entry.track.laps} lap${entry.track.laps === 3 ? 's' : ''}${entry.track.scenery_name ? ` · ${entry.track.scenery_name}` : ''}</p>
         </div>
         <span class="pill">${entry.results.length} pilotos</span>
       </div>
