@@ -342,6 +342,7 @@ elements.reloadTracks.addEventListener('click', loadTracks);
 elements.reloadAnnual.addEventListener('click', loadAnnualRanking);
 document.addEventListener('DOMContentLoaded', () => {
   elements.annualYear.value = String(state.annualYear);
+  renderLeagueHeading();
   renderViewTabs();
   updateVisibleSections();
   renderPageTitle();
