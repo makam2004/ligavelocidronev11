@@ -6,33 +6,28 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const templatePath = path.resolve(__dirname, '../public/assets/commit-podium.jpeg');
-const FONT_FAMILY = 'LigaPodium';
-let cachedFontDataUri = null;
 
-function resolveFontDataUri() {
-  if (cachedFontDataUri) return cachedFontDataUri;
-
-  const fontCandidates = [
-    '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
-    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-    '/usr/share/fonts/opentype/inter/InterDisplay-Bold.otf',
-    '/usr/share/fonts/truetype/lato/Lato-Black.ttf',
-    '/usr/share/fonts/truetype/lato/Lato-Bold.ttf'
-  ];
-
-  for (const fontPath of fontCandidates) {
-    if (fs.existsSync(fontPath)) {
-      const ext = path.extname(fontPath).toLowerCase();
-      const mime = ext === '.otf' ? 'font/otf' : 'font/ttf';
-      const encoded = fs.readFileSync(fontPath).toString('base64');
-      cachedFontDataUri = `data:${mime};base64,${encoded}`;
-      return cachedFontDataUri;
-    }
+function findFirstExisting(candidates) {
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
   }
-
-  cachedFontDataUri = '';
-  return cachedFontDataUri;
+  return null;
 }
+
+const boldFontPath = findFirstExisting([
+  '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+  '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
+  '/usr/share/fonts/truetype/lato/Lato-Bold.ttf'
+]);
+
+const regularFontPath = findFirstExisting([
+  '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+  '/usr/share/fonts/truetype/freefont/FreeSans.ttf',
+  '/usr/share/fonts/truetype/lato/Lato-Regular.ttf'
+]);
+
+const boldFontBase64 = boldFontPath ? fs.readFileSync(boldFontPath).toString('base64') : null;
+const regularFontBase64 = regularFontPath ? fs.readFileSync(regularFontPath).toString('base64') : null;
 
 function escapeXml(value) {
   return String(value ?? '')
@@ -54,137 +49,183 @@ function normalizeText(value) {
 function splitLongWord(word, maxChars) {
   if (word.length <= maxChars) return [word];
   const parts = [];
-  let remaining = word;
-  while (remaining.length > maxChars) {
-    parts.push(`${remaining.slice(0, Math.max(1, maxChars - 1))}…`);
-    remaining = remaining.slice(Math.max(1, maxChars - 1));
+  let current = word;
+  while (current.length > maxChars) {
+    parts.push(`${current.slice(0, Math.max(1, maxChars - 1))}…`);
+    current = current.slice(Math.max(1, maxChars - 1));
   }
-  if (remaining) parts.push(remaining);
+  if (current) parts.push(current);
   return parts;
 }
 
-function wrapLines(text, maxCharsPerLine = 12, maxLines = 2) {
+function wrapLines(text, maxCharsPerLine = 18, maxLines = 2) {
   const normalized = normalizeText(text);
   if (!normalized) return ['—'];
 
-  const sourceWords = normalized.split(' ').flatMap((word) => splitLongWord(word, maxCharsPerLine + 4));
+  const words = normalized
+    .split(' ')
+    .flatMap((word) => splitLongWord(word, maxCharsPerLine + 4));
+
   const lines = [];
   let current = '';
 
-  for (const word of sourceWords) {
+  for (const word of words) {
     const candidate = current ? `${current} ${word}` : word;
     if (!current || candidate.length <= maxCharsPerLine) {
       current = candidate;
       continue;
     }
+
     lines.push(current);
     current = word;
-    if (lines.length === maxLines - 1) {
-      break;
-    }
+
+    if (lines.length === maxLines - 1) break;
   }
 
   if (lines.length < maxLines && current) {
     lines.push(current);
   }
 
-  const consumed = lines.join(' ').trim();
-  if (normalized.length > consumed.length && lines.length) {
+  const consumedLength = lines.join(' ').length;
+  if (normalized.length > consumedLength && lines.length) {
     const lastIndex = lines.length - 1;
-    const lastLine = lines[lastIndex];
-    lines[lastIndex] = lastLine.length > maxCharsPerLine - 1
-      ? `${lastLine.slice(0, Math.max(1, maxCharsPerLine - 1)).trim()}…`
-      : `${lastLine}…`;
+    const last = lines[lastIndex].replace(/…$/, '');
+    lines[lastIndex] = `${last.slice(0, Math.max(1, maxCharsPerLine - 1)).trim()}…`;
   }
 
   return lines.slice(0, maxLines);
 }
 
-function computeFontSize(text, maxCharsPerLine, baseSize, minSize, maxLines = 2) {
-  const wrapped = wrapLines(text, maxCharsPerLine, maxLines);
-  const maxLength = wrapped.reduce((acc, line) => Math.max(acc, line.length), 0);
-  if (maxLength <= maxCharsPerLine) return baseSize;
-  const penalty = (maxLength - maxCharsPerLine) * 2;
-  return clamp(baseSize - penalty, minSize, baseSize);
+function getFontCss() {
+  const css = [];
+
+  if (regularFontBase64) {
+    css.push(`@font-face {
+      font-family: 'PodiumSans';
+      src: url(data:font/ttf;base64,${regularFontBase64}) format('truetype');
+      font-weight: 400;
+      font-style: normal;
+    }`);
+  }
+
+  if (boldFontBase64) {
+    css.push(`@font-face {
+      font-family: 'PodiumSans';
+      src: url(data:font/ttf;base64,${boldFontBase64}) format('truetype');
+      font-weight: 700;
+      font-style: normal;
+    }`);
+  }
+
+  css.push(`
+    .podium-text {
+      font-family: 'PodiumSans', 'DejaVu Sans', sans-serif;
+      text-rendering: geometricPrecision;
+      -webkit-font-smoothing: antialiased;
+    }
+  `);
+
+  return css.join('\n');
 }
 
-function buildTextLines({ lines, centerX, startY, lineHeight, fontSize, fill, stroke, strokeWidth }) {
+function drawTextLines({ lines, centerX, centerY, fontSize, lineHeight, fill, stroke, strokeWidth, fontWeight = 700 }) {
+  const totalHeight = (lines.length - 1) * lineHeight;
+  const firstY = centerY - totalHeight / 2;
+
   return lines.map((line, index) => `
-    <text x="${centerX}" y="${startY + index * lineHeight}" text-anchor="middle"
-      font-family="${FONT_FAMILY}" font-size="${fontSize}" font-weight="900"
-      fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" paint-order="stroke fill"
-      dominant-baseline="middle">${escapeXml(line)}</text>`).join('');
+    <text
+      class="podium-text"
+      x="${centerX}"
+      y="${firstY + index * lineHeight}"
+      text-anchor="middle"
+      dominant-baseline="middle"
+      font-size="${fontSize}"
+      font-weight="${fontWeight}"
+      fill="${fill}"
+      stroke="${stroke}"
+      stroke-width="${strokeWidth}"
+      paint-order="stroke fill"
+      lengthAdjust="spacingAndGlyphs"
+    >${escapeXml(line)}</text>
+  `).join('');
 }
 
-function buildNameBlock({ x, y, width, height, text, fill = '#ffffff' }) {
+function fitFontSize(lines, boxWidth, preferredSize, minSize) {
+  const longest = lines.reduce((max, line) => Math.max(max, line.length), 0) || 1;
+  const estimated = Math.floor((boxWidth * 1.72) / longest);
+  return clamp(Math.min(preferredSize, estimated), minSize, preferredSize);
+}
+
+function nameBlock({ x, y, width, height, text, highlight = false }) {
   const normalized = normalizeText(text) || '—';
-  const maxCharsPerLine = normalized.length > 16 ? 11 : 13;
-  const lines = wrapLines(normalized, maxCharsPerLine, 2);
-  const fontSize = computeFontSize(normalized, maxCharsPerLine, 52, 28, 2);
-  const lineHeight = Math.round(fontSize * 1.02);
-  const startY = y + height / 2 - ((lines.length - 1) * lineHeight) / 2;
+  const lines = wrapLines(normalized, normalized.length > 14 ? 11 : 13, 2);
+  const fontSize = fitFontSize(lines, width - 24, 44, 24);
+  const lineHeight = Math.round(fontSize * 1.05);
 
   return `
     <g>
-      <rect x="${x}" y="${y}" rx="22" ry="22" width="${width}" height="${height}" fill="rgba(20,30,40,0.78)" stroke="rgba(255,255,255,0.95)" stroke-width="4" />
-      ${buildTextLines({
+      <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="18" ry="18"
+        fill="rgba(14,30,46,0.82)" stroke="rgba(255,255,255,0.96)" stroke-width="4"/>
+      ${drawTextLines({
         lines,
         centerX: x + width / 2,
-        startY,
-        lineHeight,
+        centerY: y + height / 2,
         fontSize,
-        fill,
-        stroke: 'rgba(8,12,18,0.92)',
-        strokeWidth: 8
+        lineHeight,
+        fill: highlight ? '#ffe9a3' : '#ffffff',
+        stroke: 'rgba(8,12,18,0.96)',
+        strokeWidth: 7,
+        fontWeight: 700
       })}
-    </g>`;
+    </g>
+  `;
 }
 
-function buildTrackTitle({ width, text }) {
+function titleBlock({ width, text }) {
   const normalized = normalizeText(text) || 'Track semanal';
-  const lines = wrapLines(normalized, 24, 2);
-  const fontSize = computeFontSize(normalized, 24, 58, 28, 2);
-  const lineHeight = Math.round(fontSize * 1.02);
-  const boxWidth = width - 96;
-  const boxX = 48;
-  const boxHeight = 150;
-  const boxY = 38;
-  const startY = boxY + boxHeight / 2 - ((lines.length - 1) * lineHeight) / 2;
+  const lines = wrapLines(normalized, 22, 2);
+  const boxX = 44;
+  const boxY = 34;
+  const boxWidth = width - 88;
+  const boxHeight = 136;
+  const fontSize = fitFontSize(lines, boxWidth - 48, 62, 32);
+  const lineHeight = Math.round(fontSize * 1.08);
 
   return `
     <g>
-      <rect x="${boxX}" y="${boxY}" rx="26" ry="26" width="${boxWidth}" height="${boxHeight}" fill="rgba(13,31,46,0.82)" stroke="rgba(255,230,150,0.95)" stroke-width="6" />
-      ${buildTextLines({
+      <rect x="${boxX}" y="${boxY}" width="${boxWidth}" height="${boxHeight}" rx="24" ry="24"
+        fill="rgba(13,31,46,0.88)" stroke="rgba(255,230,150,0.95)" stroke-width="6"/>
+      ${drawTextLines({
         lines,
         centerX: width / 2,
-        startY,
-        lineHeight,
+        centerY: boxY + boxHeight / 2,
         fontSize,
+        lineHeight,
         fill: '#ffe89a',
-        stroke: 'rgba(6,12,18,0.92)',
-        strokeWidth: 10
+        stroke: 'rgba(6,12,18,0.98)',
+        strokeWidth: 9,
+        fontWeight: 700
       })}
-    </g>`;
+    </g>
+  `;
 }
 
-function buildPodiumOverlay({ width, height, trackName, winners }) {
+function buildOverlay({ width, height, trackName, winners }) {
   const [first, second, third] = winners;
+
   return `
-    <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
-      <style>
-        @font-face {
-          font-family: '${FONT_FAMILY}';
-          src: url('${resolveFontDataUri()}') format('truetype');
-          font-weight: 400 900;
-          font-style: normal;
-        }
-        text { font-family: '${FONT_FAMILY}', Arial, Helvetica, sans-serif; }
-      </style>
-      ${buildTrackTitle({ width, text: trackName })}
-      ${buildNameBlock({ x: 74, y: 640, width: 270, height: 124, text: second || '—' })}
-      ${buildNameBlock({ x: 352, y: 470, width: 320, height: 132, text: first || '—', fill: '#fff2b8' })}
-      ${buildNameBlock({ x: 690, y: 640, width: 270, height: 124, text: third || '—' })}
-    </svg>`;
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      <defs>
+        <style><![CDATA[
+          ${getFontCss()}
+        ]]></style>
+      </defs>
+      ${titleBlock({ width, text: trackName })}
+      ${nameBlock({ x: 56, y: 700, width: 270, height: 104, text: second, highlight: false })}
+      ${nameBlock({ x: 356, y: 530, width: 312, height: 108, text: first, highlight: true })}
+      ${nameBlock({ x: 698, y: 700, width: 270, height: 104, text: third, highlight: false })}
+    </svg>
+  `;
 }
 
 export async function buildTrackPodiumImage({ trackName, firstPilot, secondPilot, thirdPilot }) {
@@ -193,15 +234,15 @@ export async function buildTrackPodiumImage({ trackName, firstPilot, secondPilot
   const width = metadata.width || 1024;
   const height = metadata.height || 1536;
 
-  const overlaySvg = buildPodiumOverlay({
+  const overlay = buildOverlay({
     width,
     height,
     trackName: trackName || 'Track semanal',
-    winners: [firstPilot, secondPilot, thirdPilot]
+    winners: [firstPilot || '—', secondPilot || '—', thirdPilot || '—']
   });
 
   return template
-    .composite([{ input: Buffer.from(overlaySvg), top: 0, left: 0 }])
+    .composite([{ input: Buffer.from(overlay), top: 0, left: 0 }])
     .jpeg({ quality: 94 })
     .toBuffer();
 }
