@@ -4,33 +4,104 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const assetsDir = path.resolve(__dirname, '../public/assets');
-const templatePath = path.join(assetsDir, 'commit-podium.jpeg');
+const templatePath = path.resolve(__dirname, '../public/assets/commit-podium.jpeg');
 
-function normalizeText(value) {
-  return String(value || '').replace(/\s+/g, ' ').trim();
+const FONT = {
+  'A':['01110','10001','10001','11111','10001','10001','10001'],
+  'B':['11110','10001','10001','11110','10001','10001','11110'],
+  'C':['01111','10000','10000','10000','10000','10000','01111'],
+  'D':['11110','10001','10001','10001','10001','10001','11110'],
+  'E':['11111','10000','10000','11110','10000','10000','11111'],
+  'F':['11111','10000','10000','11110','10000','10000','10000'],
+  'G':['01111','10000','10000','10011','10001','10001','01110'],
+  'H':['10001','10001','10001','11111','10001','10001','10001'],
+  'I':['11111','00100','00100','00100','00100','00100','11111'],
+  'J':['00001','00001','00001','00001','10001','10001','01110'],
+  'K':['10001','10010','10100','11000','10100','10010','10001'],
+  'L':['10000','10000','10000','10000','10000','10000','11111'],
+  'M':['10001','11011','10101','10101','10001','10001','10001'],
+  'N':['10001','10001','11001','10101','10011','10001','10001'],
+  'O':['01110','10001','10001','10001','10001','10001','01110'],
+  'P':['11110','10001','10001','11110','10000','10000','10000'],
+  'Q':['01110','10001','10001','10001','10101','10010','01101'],
+  'R':['11110','10001','10001','11110','10100','10010','10001'],
+  'S':['01111','10000','10000','01110','00001','00001','11110'],
+  'T':['11111','00100','00100','00100','00100','00100','00100'],
+  'U':['10001','10001','10001','10001','10001','10001','01110'],
+  'V':['10001','10001','10001','10001','10001','01010','00100'],
+  'W':['10001','10001','10001','10101','10101','10101','01010'],
+  'X':['10001','10001','01010','00100','01010','10001','10001'],
+  'Y':['10001','10001','01010','00100','00100','00100','00100'],
+  'Z':['11111','00001','00010','00100','01000','10000','11111'],
+  '0':['01110','10001','10011','10101','11001','10001','01110'],
+  '1':['00100','01100','00100','00100','00100','00100','01110'],
+  '2':['01110','10001','00001','00010','00100','01000','11111'],
+  '3':['11110','00001','00001','01110','00001','00001','11110'],
+  '4':['00010','00110','01010','10010','11111','00010','00010'],
+  '5':['11111','10000','10000','11110','00001','00001','11110'],
+  '6':['01110','10000','10000','11110','10001','10001','01110'],
+  '7':['11111','00001','00010','00100','01000','01000','01000'],
+  '8':['01110','10001','10001','01110','10001','10001','01110'],
+  '9':['01110','10001','10001','01111','00001','00001','01110'],
+  ' ':['00000','00000','00000','00000','00000','00000','00000'],
+  '-':['00000','00000','00000','11111','00000','00000','00000'],
+  '_':['00000','00000','00000','00000','00000','00000','11111'],
+  '.':['00000','00000','00000','00000','00000','01100','01100'],
+  ':':['00000','01100','01100','00000','01100','01100','00000'],
+  '/':['00001','00010','00100','01000','10000','00000','00000'],
+  '(':['00010','00100','01000','01000','01000','00100','00010'],
+  ')':['01000','00100','00010','00010','00010','00100','01000'],
+  '&':['01100','10010','10100','01000','10101','10010','01101'],
+  "'":['00100','00100','00000','00000','00000','00000','00000'],
+  '?':['01110','10001','00010','00100','00100','00000','00100'],
+  '!':['00100','00100','00100','00100','00100','00000','00100'],
+  ',':['00000','00000','00000','00000','01100','01100','00100'],
+  '+':['00000','00100','00100','11111','00100','00100','00000']
+};
+
+function normalize(input = '') {
+  return String(input)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9 \-_.:\/()&'?!,+]/g, '?')
+    .trim() || '—';
 }
 
-function safeText(value, fallback = '—') {
-  const text = normalizeText(value);
-  return text || fallback;
+function charWidth(scale, gap) {
+  return 5 * scale + gap * scale;
 }
 
-function truncate(value, maxChars) {
-  const text = safeText(value);
-  if (text.length <= maxChars) return text;
-  return `${text.slice(0, Math.max(1, maxChars - 1)).trim()}…`;
+function textWidth(text, scale = 1, gap = 1) {
+  const chars = [...text];
+  if (!chars.length) return 0;
+  return chars.length * charWidth(scale, gap) - gap * scale;
 }
 
-function wrapText(text, maxLineLength = 18, maxLines = 2) {
-  const words = safeText(text).split(' ');
+function splitLongWord(word, maxChars) {
+  if (word.length <= maxChars) return [word];
+  const parts = [];
+  let rest = word;
+  while (rest.length > maxChars) {
+    parts.push(`${rest.slice(0, Math.max(1, maxChars - 1))}…`);
+    rest = rest.slice(Math.max(1, maxChars - 1));
+  }
+  if (rest) parts.push(rest);
+  return parts;
+}
+
+function wrapText(input, maxWidthPx, scale, gap = 1, maxLines = 2) {
+  const normalized = normalize(input);
+  const maxChars = Math.max(3, Math.floor(maxWidthPx / charWidth(scale, gap)));
+  const words = normalized.split(/\s+/).flatMap((word) => splitLongWord(word, maxChars));
+
   const lines = [];
   let current = '';
 
   for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (next.length <= maxLineLength || !current) {
-      current = next;
+    const candidate = current ? `${current} ${word}` : word;
+    if (!current || textWidth(candidate, scale, gap) <= maxWidthPx) {
+      current = candidate;
       continue;
     }
     lines.push(current);
@@ -39,138 +110,129 @@ function wrapText(text, maxLineLength = 18, maxLines = 2) {
   }
 
   if (current && lines.length < maxLines) lines.push(current);
-  if (!lines.length) return ['—'];
+  if (!lines.length) lines.push('—');
 
-  const allText = words.join(' ');
-  const used = lines.join(' ').length;
-  const remainder = allText.slice(used).trim();
-  if (remainder) {
-    lines[lines.length - 1] = truncate(`${lines[lines.length - 1]} ${remainder}`, maxLineLength);
+  const consumed = lines.join(' ').trim();
+  if (normalized.length > consumed.length && lines.length) {
+    const lastIndex = lines.length - 1;
+    const maxLastChars = Math.max(2, maxChars - 1);
+    lines[lastIndex] = `${lines[lastIndex].slice(0, maxLastChars).trim()}…`;
   }
 
   return lines.slice(0, maxLines);
 }
 
-function escapeMarkup(value) {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-async function renderTextBlock({
+function renderBitmapText({
   text,
-  width,
-  fontSize,
-  color = '#FFFFFF',
-  align = 'center',
-  lineSpacing = 1,
-  rgba = true,
+  x,
+  y,
+  maxWidth,
+  scale,
+  gap = 1,
+  color,
+  strokeColor,
+  strokePx,
+  maxLines = 2,
 }) {
-  const lines = Array.isArray(text) ? text : [text];
-  const markup = lines
-    .map((line) => {
-      const escaped = escapeMarkup(line);
-      return `<span foreground="${color}" font_family="DejaVu Sans" font_weight="bold" size="${fontSize * 1024}">${escaped}</span>`;
-    })
-    .join(`<span size="${Math.round(fontSize * lineSpacing * 1024)}">\n</span>`);
+  const lines = wrapText(text, maxWidth, scale, gap, maxLines);
+  const lineHeight = 7 * scale + 3 * scale;
+  const rects = [];
 
-  return sharp({
-    text: {
-      text: markup,
-      rgba,
-      width,
-      align,
-      dpi: 144,
-    },
-  })
-    .png()
-    .toBuffer();
+  lines.forEach((line, lineIndex) => {
+    const lineW = textWidth(line, scale, gap);
+    let cursorX = x + (maxWidth - lineW) / 2;
+    const baseY = y + lineIndex * lineHeight;
+
+    for (const rawChar of [...line]) {
+      const glyph = FONT[rawChar] || FONT['?'];
+      glyph.forEach((row, rowIndex) => {
+        [...row].forEach((bit, colIndex) => {
+          if (bit !== '1') return;
+          const rx = Math.round(cursorX + colIndex * scale);
+          const ry = Math.round(baseY + rowIndex * scale);
+          rects.push(`<rect x="${rx - strokePx}" y="${ry - strokePx}" width="${scale + strokePx * 2}" height="${scale + strokePx * 2}" fill="${strokeColor}"/>`);
+          rects.push(`<rect x="${rx}" y="${ry}" width="${scale}" height="${scale}" fill="${color}"/>`);
+        });
+      });
+      cursorX += charWidth(scale, gap);
+    }
+  });
+
+  return rects.join('');
 }
 
-function makeSvgOverlay(width, height) {
-  return Buffer.from(`
+function buildOverlay({ width, height, trackName, firstPilot, secondPilot, thirdPilot }) {
+  return `
     <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-      <rect x="44" y="28" width="${width - 88}" height="138" rx="26" ry="26" fill="#10273a" fill-opacity="0.84" stroke="#ffe89a" stroke-width="6"/>
-      <rect x="335" y="505" width="320" height="78" rx="20" ry="20" fill="#10273a" fill-opacity="0.84" stroke="#ffffff" stroke-width="4"/>
-      <rect x="46" y="704" width="270" height="74" rx="20" ry="20" fill="#10273a" fill-opacity="0.84" stroke="#ffffff" stroke-width="4"/>
-      <rect x="708" y="704" width="270" height="74" rx="20" ry="20" fill="#10273a" fill-opacity="0.84" stroke="#ffffff" stroke-width="4"/>
-    </svg>
-  `);
-}
+      <rect x="48" y="38" width="${width - 96}" height="150" rx="26" ry="26" fill="rgba(13,31,46,0.82)" stroke="rgba(255,230,150,0.95)" stroke-width="6"/>
+      ${renderBitmapText({
+        text: trackName || 'TRACK SEMANAL',
+        x: 88,
+        y: 82,
+        maxWidth: width - 176,
+        scale: 6,
+        gap: 1,
+        color: '#FFE89A',
+        strokeColor: '#06121A',
+        strokePx: 2,
+        maxLines: 2,
+      })}
 
-async function centeredComposite(buffer, x, y, targetWidth) {
-  const meta = await sharp(buffer).metadata();
-  const left = Math.round(x + (targetWidth - (meta.width || targetWidth)) / 2);
-  const top = Math.round(y + ((meta.height || 0) > 0 ? 0 : 0));
-  return { input: buffer, left, top };
+      <rect x="352" y="470" width="320" height="132" rx="22" ry="22" fill="rgba(20,30,40,0.78)" stroke="rgba(255,255,255,0.95)" stroke-width="4"/>
+      ${renderBitmapText({
+        text: firstPilot || '—',
+        x: 384,
+        y: 512,
+        maxWidth: 256,
+        scale: 5,
+        gap: 1,
+        color: '#FFF2B8',
+        strokeColor: '#081018',
+        strokePx: 2,
+        maxLines: 2,
+      })}
+
+      <rect x="74" y="640" width="270" height="124" rx="22" ry="22" fill="rgba(20,30,40,0.78)" stroke="rgba(255,255,255,0.95)" stroke-width="4"/>
+      ${renderBitmapText({
+        text: secondPilot || '—',
+        x: 104,
+        y: 682,
+        maxWidth: 210,
+        scale: 5,
+        gap: 1,
+        color: '#FFFFFF',
+        strokeColor: '#081018',
+        strokePx: 2,
+        maxLines: 2,
+      })}
+
+      <rect x="690" y="640" width="270" height="124" rx="22" ry="22" fill="rgba(20,30,40,0.78)" stroke="rgba(255,255,255,0.95)" stroke-width="4"/>
+      ${renderBitmapText({
+        text: thirdPilot || '—',
+        x: 720,
+        y: 682,
+        maxWidth: 210,
+        scale: 5,
+        gap: 1,
+        color: '#FFFFFF',
+        strokeColor: '#081018',
+        strokePx: 2,
+        maxLines: 2,
+      })}
+    </svg>
+  `;
 }
 
 export async function buildTrackPodiumImage({ trackName, firstPilot, secondPilot, thirdPilot }) {
   const template = sharp(templatePath);
-  const meta = await template.metadata();
-  const width = meta.width || 1024;
-  const height = meta.height || 1536;
+  const metadata = await template.metadata();
+  const width = metadata.width || 1024;
+  const height = metadata.height || 1536;
 
-  const titleLines = wrapText(safeText(trackName, 'Track semanal'), 18, 2);
-  const first = truncate(firstPilot || '—', 16);
-  const second = truncate(secondPilot || '—', 14);
-  const third = truncate(thirdPilot || '—', 14);
+  const overlaySvg = buildOverlay({ width, height, trackName, firstPilot, secondPilot, thirdPilot });
 
-  const titleBuffer = await renderTextBlock({
-    text: titleLines,
-    width: width - 120,
-    fontSize: titleLines.length > 1 ? 32 : 38,
-    lineSpacing: 1.05,
-  });
-
-  const firstBuffer = await renderTextBlock({
-    text: first,
-    width: 280,
-    fontSize: 28,
-  });
-
-  const secondBuffer = await renderTextBlock({
-    text: second,
-    width: 230,
-    fontSize: 24,
-  });
-
-  const thirdBuffer = await renderTextBlock({
-    text: third,
-    width: 230,
-    fontSize: 24,
-  });
-
-  const titleMeta = await sharp(titleBuffer).metadata();
-  const firstMeta = await sharp(firstBuffer).metadata();
-  const secondMeta = await sharp(secondBuffer).metadata();
-  const thirdMeta = await sharp(thirdBuffer).metadata();
-
-  const composites = [
-    { input: makeSvgOverlay(width, height), top: 0, left: 0 },
-    {
-      input: titleBuffer,
-      left: Math.round((width - (titleMeta.width || width - 120)) / 2),
-      top: 52,
-    },
-    {
-      input: firstBuffer,
-      left: Math.round(335 + (320 - (firstMeta.width || 280)) / 2),
-      top: Math.round(505 + (78 - (firstMeta.height || 32)) / 2 - 2),
-    },
-    {
-      input: secondBuffer,
-      left: Math.round(46 + (270 - (secondMeta.width || 230)) / 2),
-      top: Math.round(704 + (74 - (secondMeta.height || 28)) / 2 - 2),
-    },
-    {
-      input: thirdBuffer,
-      left: Math.round(708 + (270 - (thirdMeta.width || 230)) / 2),
-      top: Math.round(704 + (74 - (thirdMeta.height || 28)) / 2 - 2),
-    },
-  ];
-
-  return template.composite(composites).jpeg({ quality: 94 }).toBuffer();
+  return template
+    .composite([{ input: Buffer.from(overlaySvg), top: 0, left: 0 }])
+    .jpeg({ quality: 94 })
+    .toBuffer();
 }
