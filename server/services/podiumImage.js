@@ -7,27 +7,25 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const templatePath = path.resolve(__dirname, '../public/assets/commit-podium.jpeg');
 
-function findFirstExisting(candidates) {
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
+const FONT_CANDIDATES = [
+  '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+  '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+];
+
+function loadEmbeddedFontBase64() {
+  for (const candidate of FONT_CANDIDATES) {
+    try {
+      if (fs.existsSync(candidate)) {
+        return fs.readFileSync(candidate).toString('base64');
+      }
+    } catch {
+      // ignore and try next
+    }
   }
   return null;
 }
 
-const boldFontPath = findFirstExisting([
-  '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
-  '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
-  '/usr/share/fonts/truetype/lato/Lato-Bold.ttf'
-]);
-
-const regularFontPath = findFirstExisting([
-  '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-  '/usr/share/fonts/truetype/freefont/FreeSans.ttf',
-  '/usr/share/fonts/truetype/lato/Lato-Regular.ttf'
-]);
-
-const boldFontBase64 = boldFontPath ? fs.readFileSync(boldFontPath).toString('base64') : null;
-const regularFontBase64 = regularFontPath ? fs.readFileSync(regularFontPath).toString('base64') : null;
+const EMBEDDED_FONT_BASE64 = loadEmbeddedFontBase64();
 
 function escapeXml(value) {
   return String(value ?? '')
@@ -46,186 +44,82 @@ function normalizeText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
 }
 
-function splitLongWord(word, maxChars) {
-  if (word.length <= maxChars) return [word];
-  const parts = [];
-  let current = word;
-  while (current.length > maxChars) {
-    parts.push(`${current.slice(0, Math.max(1, maxChars - 1))}…`);
-    current = current.slice(Math.max(1, maxChars - 1));
-  }
-  if (current) parts.push(current);
-  return parts;
-}
-
-function wrapLines(text, maxCharsPerLine = 18, maxLines = 2) {
+function truncateText(text, maxChars) {
   const normalized = normalizeText(text);
-  if (!normalized) return ['—'];
-
-  const words = normalized
-    .split(' ')
-    .flatMap((word) => splitLongWord(word, maxCharsPerLine + 4));
-
-  const lines = [];
-  let current = '';
-
-  for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word;
-    if (!current || candidate.length <= maxCharsPerLine) {
-      current = candidate;
-      continue;
-    }
-
-    lines.push(current);
-    current = word;
-
-    if (lines.length === maxLines - 1) break;
-  }
-
-  if (lines.length < maxLines && current) {
-    lines.push(current);
-  }
-
-  const consumedLength = lines.join(' ').length;
-  if (normalized.length > consumedLength && lines.length) {
-    const lastIndex = lines.length - 1;
-    const last = lines[lastIndex].replace(/…$/, '');
-    lines[lastIndex] = `${last.slice(0, Math.max(1, maxCharsPerLine - 1)).trim()}…`;
-  }
-
-  return lines.slice(0, maxLines);
+  if (normalized.length <= maxChars) return normalized || '—';
+  return `${normalized.slice(0, Math.max(1, maxChars - 1)).trim()}…`;
 }
 
-function getFontCss() {
-  const css = [];
+function fitFontSize(text, maxChars, base, min) {
+  const length = truncateText(text, maxChars).length;
+  if (length <= maxChars * 0.6) return base;
+  const ratio = (length - maxChars * 0.6) / (maxChars * 0.4);
+  return clamp(Math.round(base - ratio * (base - min)), min, base);
+}
 
-  if (regularFontBase64) {
-    css.push(`@font-face {
-      font-family: 'PodiumSans';
-      src: url(data:font/ttf;base64,${regularFontBase64}) format('truetype');
-      font-weight: 400;
-      font-style: normal;
-    }`);
+function styleBlock() {
+  if (EMBEDDED_FONT_BASE64) {
+    return `<style><![CDATA[
+      @font-face {
+        font-family: 'PodiumEmbedded';
+        src: url("data:font/truetype;charset=utf-8;base64,${EMBEDDED_FONT_BASE64}") format('truetype');
+        font-weight: 700;
+        font-style: normal;
+      }
+      .podium-text { font-family: 'PodiumEmbedded', sans-serif; }
+    ]]></style>`;
   }
 
-  if (boldFontBase64) {
-    css.push(`@font-face {
-      font-family: 'PodiumSans';
-      src: url(data:font/ttf;base64,${boldFontBase64}) format('truetype');
-      font-weight: 700;
-      font-style: normal;
-    }`);
-  }
-
-  css.push(`
-    .podium-text {
-      font-family: 'PodiumSans', 'DejaVu Sans', sans-serif;
-      text-rendering: geometricPrecision;
-      -webkit-font-smoothing: antialiased;
-    }
-  `);
-
-  return css.join('\n');
+  return `<style><![CDATA[
+    .podium-text { font-family: 'DejaVu Sans', Arial, sans-serif; }
+  ]]></style>`;
 }
 
-function drawTextLines({ lines, centerX, centerY, fontSize, lineHeight, fill, stroke, strokeWidth, fontWeight = 700 }) {
-  const totalHeight = (lines.length - 1) * lineHeight;
-  const firstY = centerY - totalHeight / 2;
-
-  return lines.map((line, index) => `
-    <text
-      class="podium-text"
-      x="${centerX}"
-      y="${firstY + index * lineHeight}"
-      text-anchor="middle"
-      dominant-baseline="middle"
-      font-size="${fontSize}"
-      font-weight="${fontWeight}"
-      fill="${fill}"
-      stroke="${stroke}"
-      stroke-width="${strokeWidth}"
-      paint-order="stroke fill"
-      lengthAdjust="spacingAndGlyphs"
-    >${escapeXml(line)}</text>
-  `).join('');
+function drawCenteredText({ text, x, y, fontSize, fill = '#ffffff', stroke = 'rgba(9,14,22,0.94)', strokeWidth = 8 }) {
+  return `<text class="podium-text" x="${x}" y="${y}" text-anchor="middle" dominant-baseline="middle"
+    font-size="${fontSize}" font-weight="700" fill="${fill}" stroke="${stroke}"
+    stroke-width="${strokeWidth}" paint-order="stroke fill">${escapeXml(text)}</text>`;
 }
 
-function fitFontSize(lines, boxWidth, preferredSize, minSize) {
-  const longest = lines.reduce((max, line) => Math.max(max, line.length), 0) || 1;
-  const estimated = Math.floor((boxWidth * 1.72) / longest);
-  return clamp(Math.min(preferredSize, estimated), minSize, preferredSize);
-}
-
-function nameBlock({ x, y, width, height, text, highlight = false }) {
-  const normalized = normalizeText(text) || '—';
-  const lines = wrapLines(normalized, normalized.length > 14 ? 11 : 13, 2);
-  const fontSize = fitFontSize(lines, width - 24, 44, 24);
-  const lineHeight = Math.round(fontSize * 1.05);
-
+function drawPillLabel({ x, y, width, height, text, fontSize, fill = '#ffffff' }) {
   return `
     <g>
-      <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="18" ry="18"
-        fill="rgba(14,30,46,0.82)" stroke="rgba(255,255,255,0.96)" stroke-width="4"/>
-      ${drawTextLines({
-        lines,
-        centerX: x + width / 2,
-        centerY: y + height / 2,
-        fontSize,
-        lineHeight,
-        fill: highlight ? '#ffe9a3' : '#ffffff',
-        stroke: 'rgba(8,12,18,0.96)',
-        strokeWidth: 7,
-        fontWeight: 700
-      })}
-    </g>
-  `;
+      <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="22" ry="22"
+        fill="rgba(13,31,46,0.76)" stroke="rgba(255,255,255,0.94)" stroke-width="4" />
+      ${drawCenteredText({ text, x: x + width / 2, y: y + height / 2 + 1, fontSize, fill, strokeWidth: 7 })}
+    </g>`;
 }
 
-function titleBlock({ width, text }) {
-  const normalized = normalizeText(text) || 'Track semanal';
-  const lines = wrapLines(normalized, 22, 2);
-  const boxX = 44;
-  const boxY = 34;
-  const boxWidth = width - 88;
-  const boxHeight = 136;
-  const fontSize = fitFontSize(lines, boxWidth - 48, 62, 32);
-  const lineHeight = Math.round(fontSize * 1.08);
-
+function buildTrackTitle(width, trackName) {
+  const title = truncateText(trackName || 'Track semanal', 28);
+  const fontSize = fitFontSize(title, 28, 52, 34);
   return `
     <g>
-      <rect x="${boxX}" y="${boxY}" width="${boxWidth}" height="${boxHeight}" rx="24" ry="24"
-        fill="rgba(13,31,46,0.88)" stroke="rgba(255,230,150,0.95)" stroke-width="6"/>
-      ${drawTextLines({
-        lines,
-        centerX: width / 2,
-        centerY: boxY + boxHeight / 2,
-        fontSize,
-        lineHeight,
-        fill: '#ffe89a',
-        stroke: 'rgba(6,12,18,0.98)',
-        strokeWidth: 9,
-        fontWeight: 700
-      })}
-    </g>
+      <rect x="44" y="34" width="936" height="138" rx="24" ry="24"
+        fill="rgba(13,31,46,0.84)" stroke="rgba(255,230,150,0.96)" stroke-width="6" />
+      ${drawCenteredText({ text: title, x: width / 2, y: 103, fontSize, fill: '#fff3b7', strokeWidth: 9 })}
+    </g>`;
+}
+
+function buildPodiumNames(firstPilot, secondPilot, thirdPilot) {
+  const first = truncateText(firstPilot, 12);
+  const second = truncateText(secondPilot, 12);
+  const third = truncateText(thirdPilot, 12);
+
+  return `
+    ${drawPillLabel({ x: 40, y: 710, width: 266, height: 72, text: second, fontSize: fitFontSize(second, 12, 34, 22) })}
+    ${drawPillLabel({ x: 356, y: 520, width: 312, height: 76, text: first, fontSize: fitFontSize(first, 12, 36, 24), fill: '#fff3b7' })}
+    ${drawPillLabel({ x: 718, y: 710, width: 266, height: 72, text: third, fontSize: fitFontSize(third, 12, 34, 22) })}
   `;
 }
 
-function buildOverlay({ width, height, trackName, winners }) {
-  const [first, second, third] = winners;
-
+function buildPodiumOverlay({ width, height, trackName, firstPilot, secondPilot, thirdPilot }) {
   return `
-    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-      <defs>
-        <style><![CDATA[
-          ${getFontCss()}
-        ]]></style>
-      </defs>
-      ${titleBlock({ width, text: trackName })}
-      ${nameBlock({ x: 56, y: 700, width: 270, height: 104, text: second, highlight: false })}
-      ${nameBlock({ x: 356, y: 530, width: 312, height: 108, text: first, highlight: true })}
-      ${nameBlock({ x: 698, y: 700, width: 270, height: 104, text: third, highlight: false })}
-    </svg>
-  `;
+    <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+      ${styleBlock()}
+      ${buildTrackTitle(width, trackName)}
+      ${buildPodiumNames(firstPilot, secondPilot, thirdPilot)}
+    </svg>`;
 }
 
 export async function buildTrackPodiumImage({ trackName, firstPilot, secondPilot, thirdPilot }) {
@@ -234,15 +128,17 @@ export async function buildTrackPodiumImage({ trackName, firstPilot, secondPilot
   const width = metadata.width || 1024;
   const height = metadata.height || 1536;
 
-  const overlay = buildOverlay({
+  const overlaySvg = buildPodiumOverlay({
     width,
     height,
-    trackName: trackName || 'Track semanal',
-    winners: [firstPilot || '—', secondPilot || '—', thirdPilot || '—']
+    trackName,
+    firstPilot,
+    secondPilot,
+    thirdPilot
   });
 
   return template
-    .composite([{ input: Buffer.from(overlay), top: 0, left: 0 }])
-    .jpeg({ quality: 94 })
+    .composite([{ input: Buffer.from(overlaySvg), top: 0, left: 0 }])
+    .jpeg({ quality: 95 })
     .toBuffer();
 }
