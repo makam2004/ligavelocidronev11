@@ -56,13 +56,14 @@ const FONT = {
   '?':['01110','10001','00010','00100','00100','00000','00100'],
   '!':['00100','00100','00100','00100','00100','00000','00100'],
   ',':['00000','00000','00000','00000','01100','01100','00100'],
-  '+':['00000','00100','00100','11111','00100','00100','00000']
+  '+':['00000','00100','00100','11111','00100','00100','00000'],
+  '—':['11111','11111','11111','11111','11111','11111','11111']
 };
 
 function normalize(input = '') {
   return String(input)
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .toUpperCase()
     .replace(/[^A-Z0-9 \-_.:\/()&'?!,+]/g, '?')
     .trim() || '—';
@@ -122,6 +123,16 @@ function wrapText(input, maxWidthPx, scale, gap = 1, maxLines = 2) {
   return lines.slice(0, maxLines);
 }
 
+function fitScale(text, maxWidth, preferredScale, minScale, gap = 1, maxLines = 2) {
+  for (let scale = preferredScale; scale >= minScale; scale -= 1) {
+    const lines = wrapText(text, maxWidth, scale, gap, maxLines);
+    if (lines.length <= maxLines && lines.every((line) => textWidth(line, scale, gap) <= maxWidth)) {
+      return scale;
+    }
+  }
+  return minScale;
+}
+
 function renderBitmapText({
   text,
   x,
@@ -161,63 +172,76 @@ function renderBitmapText({
   return rects.join('');
 }
 
+function textGroup(text, box, options) {
+  const scale = fitScale(text, box.textWidth, options.preferredScale, options.minScale, options.gap, options.maxLines);
+  const lineHeight = 7 * scale + 3 * scale;
+  const lines = wrapText(text, box.textWidth, scale, options.gap, options.maxLines);
+  const totalHeight = lines.length * 7 * scale + Math.max(0, lines.length - 1) * 3 * scale;
+  const textY = Math.round(box.y + (box.h - totalHeight) / 2);
+  return renderBitmapText({
+    text,
+    x: box.x + box.paddingX,
+    y: textY,
+    maxWidth: box.textWidth,
+    scale,
+    gap: options.gap,
+    color: options.color,
+    strokeColor: options.strokeColor,
+    strokePx: options.strokePx,
+    maxLines: options.maxLines,
+  });
+}
+
 function buildOverlay({ width, height, trackName, firstPilot, secondPilot, thirdPilot }) {
+  const titleBox = { x: 48, y: 38, w: width - 96, h: 150, paddingX: 42, textWidth: width - 180 };
+  const firstBox = { x: 338, y: 430, w: 340, h: 116, paddingX: 26, textWidth: 288 };
+  const secondBox = { x: 50, y: 600, w: 274, h: 108, paddingX: 22, textWidth: 230 };
+  const thirdBox = { x: 700, y: 600, w: 274, h: 108, paddingX: 22, textWidth: 230 };
+
   return `
     <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-      <rect x="48" y="38" width="${width - 96}" height="150" rx="26" ry="26" fill="rgba(13,31,46,0.82)" stroke="rgba(255,230,150,0.95)" stroke-width="6"/>
-      ${renderBitmapText({
-        text: trackName || 'TRACK SEMANAL',
-        x: 88,
-        y: 82,
-        maxWidth: width - 176,
-        scale: 6,
+      <rect x="${titleBox.x}" y="${titleBox.y}" width="${titleBox.w}" height="${titleBox.h}" rx="26" ry="26" fill="rgba(13,31,46,0.82)" stroke="rgba(255,230,150,0.95)" stroke-width="6"/>
+      ${textGroup(trackName || 'TRACK SEMANAL', titleBox, {
+        preferredScale: 6,
+        minScale: 3,
         gap: 1,
+        maxLines: 2,
         color: '#FFE89A',
         strokeColor: '#06121A',
         strokePx: 2,
-        maxLines: 2,
       })}
 
-      <rect x="352" y="470" width="320" height="132" rx="22" ry="22" fill="rgba(20,30,40,0.78)" stroke="rgba(255,255,255,0.95)" stroke-width="4"/>
-      ${renderBitmapText({
-        text: firstPilot || '—',
-        x: 384,
-        y: 512,
-        maxWidth: 256,
-        scale: 5,
+      <rect x="${firstBox.x}" y="${firstBox.y}" width="${firstBox.w}" height="${firstBox.h}" rx="22" ry="22" fill="rgba(20,30,40,0.78)" stroke="rgba(255,255,255,0.95)" stroke-width="4"/>
+      ${textGroup(firstPilot || '—', firstBox, {
+        preferredScale: 5,
+        minScale: 3,
         gap: 1,
+        maxLines: 2,
         color: '#FFF2B8',
         strokeColor: '#081018',
         strokePx: 2,
-        maxLines: 2,
       })}
 
-      <rect x="74" y="640" width="270" height="124" rx="22" ry="22" fill="rgba(20,30,40,0.78)" stroke="rgba(255,255,255,0.95)" stroke-width="4"/>
-      ${renderBitmapText({
-        text: secondPilot || '—',
-        x: 104,
-        y: 682,
-        maxWidth: 210,
-        scale: 5,
+      <rect x="${secondBox.x}" y="${secondBox.y}" width="${secondBox.w}" height="${secondBox.h}" rx="22" ry="22" fill="rgba(20,30,40,0.78)" stroke="rgba(255,255,255,0.95)" stroke-width="4"/>
+      ${textGroup(secondPilot || '—', secondBox, {
+        preferredScale: 5,
+        minScale: 3,
         gap: 1,
+        maxLines: 2,
         color: '#FFFFFF',
         strokeColor: '#081018',
         strokePx: 2,
-        maxLines: 2,
       })}
 
-      <rect x="690" y="640" width="270" height="124" rx="22" ry="22" fill="rgba(20,30,40,0.78)" stroke="rgba(255,255,255,0.95)" stroke-width="4"/>
-      ${renderBitmapText({
-        text: thirdPilot || '—',
-        x: 720,
-        y: 682,
-        maxWidth: 210,
-        scale: 5,
+      <rect x="${thirdBox.x}" y="${thirdBox.y}" width="${thirdBox.w}" height="${thirdBox.h}" rx="22" ry="22" fill="rgba(20,30,40,0.78)" stroke="rgba(255,255,255,0.95)" stroke-width="4"/>
+      ${textGroup(thirdPilot || '—', thirdBox, {
+        preferredScale: 5,
+        minScale: 3,
         gap: 1,
+        maxLines: 2,
         color: '#FFFFFF',
         strokeColor: '#081018',
         strokePx: 2,
-        maxLines: 2,
       })}
     </svg>
   `;
