@@ -118,7 +118,7 @@ function buildTrackSection(track, results) {
     return lines.join('\n');
   }
 
-  const topRows = results.map((row) => {
+  const topRows = results.slice(0, 10).map((row) => {
     const pilotName = escapeHtml(row.playername || 'Sin nombre');
     const lapTime = escapeHtml(row.lap_time || 'sin tiempo');
     return `${rankEmoji(row.position)} <b>${pilotName}</b> — ${lapTime}`;
@@ -277,68 +277,23 @@ export async function sendTelegramPhoto(chatId, photoBuffer, options = {}) {
   return data;
 }
 
-function splitTelegramMessage(text, maxLength = 3500) {
-  const normalized = String(text ?? '');
-  if (normalized.length <= maxLength) {
-    return [normalized];
-  }
-
-  const chunks = [];
-  let current = '';
-
-  for (const line of normalized.split('\n')) {
-    const candidate = current ? `${current}\n${line}` : line;
-    if (candidate.length <= maxLength) {
-      current = candidate;
-      continue;
-    }
-
-    if (current) {
-      chunks.push(current);
-      current = '';
-    }
-
-    if (line.length <= maxLength) {
-      current = line;
-      continue;
-    }
-
-    for (let start = 0; start < line.length; start += maxLength) {
-      chunks.push(line.slice(start, start + maxLength));
-    }
-  }
-
-  if (current) {
-    chunks.push(current);
-  }
-
-  return chunks.filter(Boolean);
-}
-
 export async function sendTelegramMessage(chatId, text, options = {}) {
-  const chunks = splitTelegramMessage(text);
-  const results = [];
+  const payload = {
+    chat_id: chatId,
+    text,
+    disable_web_page_preview: true
+  };
 
-  for (const chunk of chunks) {
-    const payload = {
-      chat_id: chatId,
-      text: chunk,
-      disable_web_page_preview: true
-    };
-
-    if (options.parseMode) {
-      payload.parse_mode = options.parseMode;
-    }
-
-    const threadId = normalizeThreadId(options.messageThreadId);
-    if (threadId) {
-      payload.message_thread_id = threadId;
-    }
-
-    results.push(await callTelegram('sendMessage', payload));
+  if (options.parseMode) {
+    payload.parse_mode = options.parseMode;
   }
 
-  return results;
+  const threadId = normalizeThreadId(options.messageThreadId);
+  if (threadId) {
+    payload.message_thread_id = threadId;
+  }
+
+  return callTelegram('sendMessage', payload);
 }
 
 export async function registerTelegramWebhook() {
@@ -402,7 +357,7 @@ function buildAnnualRankingMessage(annual) {
     ].join('\n');
   }
 
-  const topRows = results.map((row) => {
+  const topRows = results.slice(0, 20).map((row) => {
     const medal = rankEmoji(row.position);
     const name = escapeHtml(row.pilot_name || 'Sin nombre');
     const points = Number(row.total_points) || 0;
